@@ -1,0 +1,7 @@
+{
+    "database_url": "postgresql://vids:YOURPASSWORD@postgres:5432/vids",
+    "meilisearch_url": "http://meilisearch:7700",
+    "meilisearch_key": null,
+    "batch_size": 1000,
+    "notify_channel": "media_changes"
+}
