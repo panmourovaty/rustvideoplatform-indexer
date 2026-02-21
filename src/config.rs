@@ -3,7 +3,7 @@ use std::env;
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
-    pub database_url: String,
+    pub dbconnection: String,
     pub meilisearch_url: String,
     pub meilisearch_key: Option<String>,
     /// Batch size for initial full sync (default: 1000)
@@ -30,7 +30,7 @@ impl Config {
         }
 
         Config {
-            database_url: env::var("DATABASE_URL")
+            dbconnection: env::var("DATABASE_URL")
                 .expect("DATABASE_URL must be set (or provide config.json)"),
             meilisearch_url: env::var("MEILISEARCH_URL")
                 .unwrap_or_else(|_| "http://localhost:7700".to_string()),
