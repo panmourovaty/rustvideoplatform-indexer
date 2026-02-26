@@ -14,6 +14,8 @@ pub struct MeiliMedia {
     pub r#type: String,
     pub upload: i64,
     pub public: bool,
+    pub visibility: String,
+    pub restricted_to_group: Option<String>,
 }
 
 /// Payload received via PostgreSQL NOTIFY for media changes.

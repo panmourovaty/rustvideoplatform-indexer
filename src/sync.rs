@@ -30,7 +30,8 @@ pub async fn full_sync(
 
     loop {
         let batch: Vec<MeiliMedia> = sqlx::query_as(
-            "SELECT id, name, owner, views, likes, dislikes, type, upload, public \
+            "SELECT id, name, owner, views, likes, dislikes, type, upload, public, \
+             visibility, restricted_to_group \
              FROM media ORDER BY upload ASC LIMIT $1 OFFSET $2",
         )
         .bind(batch_size as i64)
@@ -65,7 +66,8 @@ pub async fn sync_single(
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row: Option<MeiliMedia> = sqlx::query_as(
-        "SELECT id, name, owner, views, likes, dislikes, type, upload, public \
+        "SELECT id, name, owner, views, likes, dislikes, type, upload, public, \
+         visibility, restricted_to_group \
          FROM media WHERE id = $1",
     )
     .bind(media_id)
