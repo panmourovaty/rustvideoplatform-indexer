@@ -1,3 +1,4 @@
+mod cache;
 mod config;
 mod listener;
 mod meilisearch;
@@ -45,13 +46,30 @@ async fn main() {
         }
     }
 
-    info!("Starting change listener...");
+    // Connect to Redis/Dragonfly for caching
+    info!("Connecting to Redis at {}...", config.redis_url);
+    let redis_client =
+        redis::Client::open(config.redis_url.as_str()).expect("Invalid Redis URL");
+    let redis_conn = redis_client
+        .get_connection_manager()
+        .await
+        .expect("Failed to connect to Redis");
+    info!("Connected to Redis");
+
+    info!("Starting change listener and cache refresh...");
     info!("Press Ctrl+C to stop");
 
     // Listen for changes in a separate task
     let listener_pool = pool.clone();
+    let cache_interval = config.cache_interval_secs;
     let listener_handle = tokio::spawn(async move {
         listener::listen_for_changes(&listener_pool, &meili, &config.notify_channel).await;
+    });
+
+    // Periodic cache refresh task (trending metrics + reaction counts → Redis)
+    let cache_pool = pool.clone();
+    let cache_handle = tokio::spawn(async move {
+        cache::run_periodic_cache(cache_pool, redis_conn, cache_interval).await;
     });
 
     // Wait for shutdown signal
@@ -61,6 +79,7 @@ async fn main() {
 
     info!("Shutting down...");
     listener_handle.abort();
+    cache_handle.abort();
     pool.close().await;
     info!("Goodbye!");
 }
