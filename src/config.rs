@@ -12,6 +12,11 @@ pub struct Config {
     /// Channel name for PostgreSQL LISTEN/NOTIFY (default: "media_changes")
     #[serde(default = "default_channel")]
     pub notify_channel: String,
+    /// Redis/Dragonfly URL for caching trending metrics and reaction counts
+    pub redis_url: String,
+    /// Interval in seconds between cache refreshes (default: 60)
+    #[serde(default = "default_cache_interval")]
+    pub cache_interval_secs: u64,
 }
 
 fn default_batch_size() -> usize {
@@ -20,6 +25,10 @@ fn default_batch_size() -> usize {
 
 fn default_channel() -> String {
     "media_changes".to_string()
+}
+
+fn default_cache_interval() -> u64 {
+    60
 }
 
 impl Config {
@@ -41,6 +50,12 @@ impl Config {
                 .unwrap_or_else(default_batch_size),
             notify_channel: env::var("NOTIFY_CHANNEL")
                 .unwrap_or_else(|_| default_channel()),
+            redis_url: env::var("REDIS_URL")
+                .expect("REDIS_URL must be set (or provide config.json)"),
+            cache_interval_secs: env::var("CACHE_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(default_cache_interval),
         }
     }
 }
