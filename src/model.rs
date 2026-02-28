@@ -9,11 +9,9 @@ pub struct MeiliMedia {
     pub owner: String,
     pub views: i64,
     pub likes: i64,
-    pub dislikes: i64,
     #[sqlx(rename = "type")]
     pub r#type: String,
     pub upload: i64,
-    pub public: bool,
     pub visibility: String,
     pub restricted_to_group: Option<String>,
 }

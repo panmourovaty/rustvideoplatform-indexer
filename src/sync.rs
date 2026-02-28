@@ -30,9 +30,13 @@ pub async fn full_sync(
 
     loop {
         let batch: Vec<MeiliMedia> = sqlx::query_as(
-            "SELECT id, name, owner, views, likes, dislikes, type, upload, public, \
-             visibility, restricted_to_group \
-             FROM media ORDER BY upload ASC LIMIT $1 OFFSET $2",
+            "SELECT m.id, m.name, m.owner, m.views, \
+             COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
+             m.type, m.upload, m.visibility, m.restricted_to_group \
+             FROM media m \
+             LEFT JOIN media_likes ml ON m.id = ml.media_id \
+             GROUP BY m.id, m.name, m.owner, m.views, m.type, m.upload, m.visibility, m.restricted_to_group \
+             ORDER BY m.upload ASC LIMIT $1 OFFSET $2",
         )
         .bind(batch_size as i64)
         .bind(offset)
@@ -66,9 +70,13 @@ pub async fn sync_single(
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row: Option<MeiliMedia> = sqlx::query_as(
-        "SELECT id, name, owner, views, likes, dislikes, type, upload, public, \
-         visibility, restricted_to_group \
-         FROM media WHERE id = $1",
+        "SELECT m.id, m.name, m.owner, m.views, \
+         COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
+         m.type, m.upload, m.visibility, m.restricted_to_group \
+         FROM media m \
+         LEFT JOIN media_likes ml ON m.id = ml.media_id \
+         WHERE m.id = $1 \
+         GROUP BY m.id, m.name, m.owner, m.views, m.type, m.upload, m.visibility, m.restricted_to_group",
     )
     .bind(media_id)
     .fetch_optional(pool)
