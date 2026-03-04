@@ -37,7 +37,7 @@ impl MeiliIndex {
 
         // Filterable attributes for search filters
         let task = index
-            .set_filterable_attributes(["public", "type", "upload", "views", "likes", "visibility", "restricted_to_group"])
+            .set_filterable_attributes(["public", "type", "upload", "views", "likes", "visibility", "restricted_to_group", "owner"])
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
