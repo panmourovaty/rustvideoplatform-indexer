@@ -17,6 +17,12 @@ pub struct Config {
     /// Interval in seconds between cache refreshes (default: 60)
     #[serde(default = "default_cache_interval")]
     pub cache_interval_secs: u64,
+    /// Path to the source directory containing media files (for sprite generation)
+    #[serde(default = "default_source_dir")]
+    pub source_dir: String,
+    /// Number of top trending items to include in the sprite (default: 20)
+    #[serde(default = "default_sprite_items")]
+    pub sprite_items: usize,
 }
 
 fn default_batch_size() -> usize {
@@ -29,6 +35,14 @@ fn default_channel() -> String {
 
 fn default_cache_interval() -> u64 {
     60
+}
+
+fn default_source_dir() -> String {
+    "source".to_string()
+}
+
+fn default_sprite_items() -> usize {
+    20
 }
 
 impl Config {
@@ -56,6 +70,12 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_cache_interval),
+            source_dir: env::var("SOURCE_DIR")
+                .unwrap_or_else(|_| default_source_dir()),
+            sprite_items: env::var("SPRITE_ITEMS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(default_sprite_items),
         }
     }
 }
