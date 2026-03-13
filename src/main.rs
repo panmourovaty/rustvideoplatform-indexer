@@ -3,6 +3,7 @@ mod config;
 mod listener;
 mod meilisearch;
 mod model;
+mod sprite;
 mod sync;
 
 use log::{error, info};
@@ -68,8 +69,10 @@ async fn main() {
 
     // Periodic cache refresh task (trending metrics + reaction counts → Redis)
     let cache_pool = pool.clone();
+    let source_dir = config.source_dir.clone();
+    let sprite_items = config.sprite_items;
     let cache_handle = tokio::spawn(async move {
-        cache::run_periodic_cache(cache_pool, redis_conn, cache_interval).await;
+        cache::run_periodic_cache(cache_pool, redis_conn, cache_interval, source_dir, sprite_items).await;
     });
 
     // Wait for shutdown signal
