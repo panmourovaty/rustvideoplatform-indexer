@@ -111,7 +111,7 @@ pub fn generate_trending_sprite(source_dir: &str, media_ids: &[String]) -> Optio
     args.push("-svtav1-params".into());
     args.push("avif=1".into());
     args.push("-crf".into());
-    args.push("32".into());
+    args.push("28".into());
     args.push("-frames:v".into());
     args.push("1".into());
     args.push(sprite_path.clone());
