@@ -5,8 +5,12 @@ RUN apk add --no-cache musl-dev openssl-dev pkgconfig
 RUN mkdir /src
 COPY ./ /src/rustvideoplatform-indexer
 
-ENV RUSTFLAGS="-C target-cpu=x86-64-v2"
-RUN cd /src/rustvideoplatform-indexer && cargo build --release
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+        amd64)   export RUSTFLAGS="-C target-cpu=x86-64-v3" ;; \
+        ppc64le) export RUSTFLAGS="-C target-cpu=pwr8" ;; \
+    esac && \
+    cd /src/rustvideoplatform-indexer && cargo build --release
 
 
 FROM alpine:latest
