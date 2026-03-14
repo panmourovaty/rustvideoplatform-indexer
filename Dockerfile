@@ -6,7 +6,10 @@ RUN mkdir /src
 COPY ./ /src/rustvideoplatform-indexer
 
 ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "amd64" ]; then export RUSTFLAGS="-C target-cpu=x86-64-v3"; fi && \
+RUN case "$TARGETARCH" in \
+        amd64)   export RUSTFLAGS="-C target-cpu=x86-64-v3" ;; \
+        ppc64le) export RUSTFLAGS="-C target-cpu=pwr8" ;; \
+    esac && \
     cd /src/rustvideoplatform-indexer && cargo build --release
 
 
