@@ -36,20 +36,26 @@ fn build_xstack_layout(count: u32) -> String {
 ///
 /// Falls back to thumbnail.avif if thumbnail-sm.avif is not available for a media item.
 /// Skips items where neither thumbnail exists.
-pub fn generate_trending_sprite(source_dir: &str, media_ids: &[String]) -> Option<String> {
+pub fn generate_trending_sprite(
+    source_dir: &str,
+    media_ids: &[String],
+) -> Option<(String, Vec<String>)> {
     if media_ids.is_empty() {
         return None;
     }
 
-    // Collect paths of available thumbnails
+    // Collect paths of available thumbnails and track which IDs were included
+    let mut included_ids: Vec<String> = Vec::new();
     let thumb_paths: Vec<String> = media_ids
         .iter()
         .filter_map(|id| {
             let sm = format!("{}/{}/thumbnail-sm.avif", source_dir, id);
             let full = format!("{}/{}/thumbnail.avif", source_dir, id);
             if Path::new(&sm).exists() {
+                included_ids.push(id.clone());
                 Some(sm)
             } else if Path::new(&full).exists() {
+                included_ids.push(id.clone());
                 Some(full)
             } else {
                 None
@@ -125,7 +131,7 @@ pub fn generate_trending_sprite(source_dir: &str, media_ids: &[String]) -> Optio
     match status {
         Ok(s) if s.success() => {
             info!("Trending sprite generated: {}", sprite_name);
-            Some(sprite_name)
+            Some((sprite_name, included_ids))
         }
         Ok(s) => {
             warn!(
