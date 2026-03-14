@@ -1,53 +1,61 @@
 use log::{error, info};
 use meilisearch_sdk::client::Client;
-use meilisearch_sdk::indexes::Index;
-
-use crate::model::MeiliMedia;
-
-const INDEX_NAME: &str = "media";
+use serde::{de::DeserializeOwned, Serialize};
 
 pub struct MeiliIndex {
     client: Client,
+    index_name: String,
+    primary_key: String,
 }
 
 impl MeiliIndex {
-    pub fn new(url: &str, key: Option<&str>) -> Self {
+    pub fn new(url: &str, key: Option<&str>, index_name: &str, primary_key: &str) -> Self {
         let client = Client::new(url, key).expect("Failed to create Meilisearch client");
-        MeiliIndex { client }
+        MeiliIndex {
+            client,
+            index_name: index_name.to_owned(),
+            primary_key: primary_key.to_owned(),
+        }
     }
 
-    /// Create or configure the "media" index with settings from MEILISEARCH_SCHEMA.md.
-    pub async fn setup_index(&self) -> Result<Index, Box<dyn std::error::Error>> {
-        info!("Configuring Meilisearch index '{INDEX_NAME}'...");
+    pub fn index_name(&self) -> &str {
+        &self.index_name
+    }
 
-        // Create index with primary key (idempotent — will use existing if present)
+    /// Configure the "media" index with its specific settings.
+    pub async fn setup_media_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Configuring Meilisearch index '{}'...", self.index_name);
+
         let task = self
             .client
-            .create_index(INDEX_NAME, Some("id"))
+            .create_index(&self.index_name, Some(&self.primary_key))
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
-        let index = self.client.index(INDEX_NAME);
+        let index = self.client.index(&self.index_name);
 
-        // Searchable attributes — name is primary, owner allows searching by creator
+        let task = index.set_searchable_attributes(["name", "owner"]).await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
         let task = index
-            .set_searchable_attributes(["name", "owner"])
+            .set_filterable_attributes([
+                "public",
+                "type",
+                "upload",
+                "views",
+                "likes",
+                "visibility",
+                "restricted_to_group",
+                "owner",
+            ])
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
-        // Filterable attributes for search filters
-        let task = index
-            .set_filterable_attributes(["public", "type", "upload", "views", "likes", "visibility", "restricted_to_group", "owner"])
-            .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
-
-        // Sortable attributes for sort options
         let task = index
             .set_sortable_attributes(["upload", "views", "likes"])
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
-        // Ranking rules (default Meilisearch ranking)
         let task = index
             .set_ranking_rules([
                 "words",
@@ -60,46 +68,134 @@ impl MeiliIndex {
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
-        info!("Meilisearch index '{INDEX_NAME}' configured successfully");
-        Ok(index)
+        info!(
+            "Meilisearch index '{}' configured successfully",
+            self.index_name
+        );
+        Ok(())
+    }
+
+    /// Configure the "lists" index.
+    pub async fn setup_lists_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Configuring Meilisearch index '{}'...", self.index_name);
+
+        let task = self
+            .client
+            .create_index(&self.index_name, Some(&self.primary_key))
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let index = self.client.index(&self.index_name);
+
+        let task = index.set_searchable_attributes(["name", "owner"]).await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let task = index
+            .set_filterable_attributes(["visibility", "restricted_to_group", "owner"])
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let task = index
+            .set_sortable_attributes(["created", "item_count"])
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let task = index
+            .set_ranking_rules([
+                "words",
+                "typo",
+                "proximity",
+                "attribute",
+                "sort",
+                "exactness",
+            ])
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        info!(
+            "Meilisearch index '{}' configured successfully",
+            self.index_name
+        );
+        Ok(())
+    }
+
+    /// Configure the "users" index.
+    pub async fn setup_users_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Configuring Meilisearch index '{}'...", self.index_name);
+
+        let task = self
+            .client
+            .create_index(&self.index_name, Some(&self.primary_key))
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let index = self.client.index(&self.index_name);
+
+        let task = index
+            .set_searchable_attributes(["name", "login"])
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let task = index
+            .set_ranking_rules([
+                "words",
+                "typo",
+                "proximity",
+                "attribute",
+                "sort",
+                "exactness",
+            ])
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        info!(
+            "Meilisearch index '{}' configured successfully",
+            self.index_name
+        );
+        Ok(())
     }
 
     /// Bulk-add or replace documents in the index.
-    pub async fn add_documents(
+    pub async fn add_documents<T: Serialize + DeserializeOwned + Send + Sync>(
         &self,
-        documents: &[MeiliMedia],
+        documents: &[T],
     ) -> Result<(), Box<dyn std::error::Error>> {
         if documents.is_empty() {
             return Ok(());
         }
-        let index = self.client.index(INDEX_NAME);
-        let task = index.add_documents(documents, Some("id")).await?;
-        task.wait_for_completion(&self.client, None, None).await?;
-        Ok(())
-    }
-
-    /// Add or update a single document (upsert).
-    pub async fn upsert_document(
-        &self,
-        document: &MeiliMedia,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let index = self.client.index(INDEX_NAME);
+        let index = self.client.index(&self.index_name);
         let task = index
-            .add_documents(&[document.clone()], Some("id"))
+            .add_documents(documents, Some(self.primary_key.as_str()))
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
         Ok(())
     }
 
-    /// Delete a document by its media ID.
+    /// Add or update a single document (upsert).
+    pub async fn upsert_document<T: Serialize + DeserializeOwned + Send + Sync>(
+        &self,
+        document: &T,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let index = self.client.index(&self.index_name);
+        let task = index
+            .add_documents(std::slice::from_ref(document), Some(self.primary_key.as_str()))
+            .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+        Ok(())
+    }
+
+    /// Delete a document by its primary key value.
     pub async fn delete_document(&self, id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let index = self.client.index(INDEX_NAME);
+        let index = self.client.index(&self.index_name);
         match index.delete_document(id).await {
             Ok(task) => {
                 task.wait_for_completion(&self.client, None, None).await?;
             }
             Err(e) => {
-                error!("Failed to delete document '{id}' from Meilisearch: {e}");
+                error!(
+                    "Failed to delete document '{id}' from index '{}': {e}",
+                    self.index_name
+                );
             }
         }
         Ok(())
