@@ -1,6 +1,6 @@
-FROM rust:alpine AS builder
+FROM alpine:edge AS builder
 
-RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+RUN apk add --no-cache cargo musl-dev openssl-dev pkgconfig
 
 RUN mkdir /src
 COPY ./ /src/rustvideoplatform-indexer
@@ -9,7 +9,7 @@ ENV RUSTFLAGS="-C target-cpu=x86-64-v2"
 RUN cd /src/rustvideoplatform-indexer && cargo build --release
 
 
-FROM alpine:latest
+FROM alpine:edge
 RUN apk add --no-cache ffmpeg
 COPY --from=builder /src/rustvideoplatform-indexer/target/release/rustvideoplatform-indexer /opt/rustvideoplatform-indexer
 
