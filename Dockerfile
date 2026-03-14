@@ -1,6 +1,6 @@
-FROM rust:alpine AS builder
+FROM alpine AS builder
 
-RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+RUN apk add --no-cache cargo musl-dev openssl-dev pkgconfig
 
 RUN mkdir /src
 COPY ./ /src/rustvideoplatform-indexer
