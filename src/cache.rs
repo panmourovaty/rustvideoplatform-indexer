@@ -168,11 +168,25 @@ async fn refresh_cache(
         .await
         .unwrap_or(None);
 
-        if let Some(ref sprite_name) = new_sprite {
+        if let Some((ref sprite_name, ref included_ids)) = new_sprite {
             // Store the new sprite filename in Redis for the main app to use
             let _: Result<(), _> = redis
                 .set::<_, _, ()>("cache:trending:sprite", sprite_name)
                 .await;
+
+            // Store per-media sprite positions based on actual inclusion order
+            let sprite_w: i32 = 352;
+            let sprite_h: i32 = 198;
+            let sprite_cols: i32 = 5;
+            for (i, id) in included_ids.iter().enumerate() {
+                let i = i as i32;
+                let sx = -((i % sprite_cols) * sprite_w);
+                let sy = -((i / sprite_cols) * sprite_h);
+                let key = format!("cache:trending:info:{}", id);
+                let _: Result<(), _> = redis.hset(&key, "sprite_x", sx).await;
+                let _: Result<(), _> = redis.hset(&key, "sprite_y", sy).await;
+            }
+
             info!("Updated trending sprite in Redis: {}", sprite_name);
         }
 
@@ -186,7 +200,7 @@ async fn refresh_cache(
             .ok();
         }
 
-        *current_sprite = new_sprite;
+        *current_sprite = new_sprite.map(|(name, _)| name);
         *last_trending_ids = top_ids;
     } else {
         info!("Trending list unchanged, skipping sprite regeneration");
