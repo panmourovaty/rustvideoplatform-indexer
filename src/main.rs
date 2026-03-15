@@ -7,6 +7,7 @@ mod sprite;
 mod sync;
 
 use log::{error, info};
+use std::time::Duration;
 use surrealdb::engine::remote::ws::{Client as WsClient, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
@@ -23,19 +24,43 @@ async fn main() {
     let config = Config::load();
 
     info!("Connecting to SurrealDB at {}...", config.surrealdb_url);
-    let db: Db = Surreal::new::<Ws>(&config.surrealdb_url)
-        .await
-        .expect("Failed to connect to SurrealDB");
-    db.signin(Root {
-        username: &config.surrealdb_user,
-        password: &config.surrealdb_pass,
-    })
-    .await
-    .expect("Failed to sign in to SurrealDB");
-    db.use_ns(&config.surrealdb_ns)
-        .use_db(&config.surrealdb_db)
-        .await
-        .expect("Failed to select namespace/database");
+    let db: Db = {
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            let result: Result<Db, String> = async {
+                let d = Surreal::new::<Ws>(&config.surrealdb_url)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                d.signin(Root {
+                    username: &config.surrealdb_user,
+                    password: &config.surrealdb_pass,
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+                d.use_ns(&config.surrealdb_ns)
+                    .use_db(&config.surrealdb_db)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(d)
+            }
+            .await;
+            match result {
+                Ok(d) => break d,
+                Err(e) => {
+                    if attempt >= 10 {
+                        panic!("Failed to connect to SurrealDB after {} attempts: {}", attempt, e);
+                    }
+                    let delay = std::cmp::min(30, 2u64.pow(attempt));
+                    info!(
+                        "SurrealDB connection attempt {}/10 failed: {}. Retrying in {}s...",
+                        attempt, e, delay
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                }
+            }
+        }
+    };
     info!("Connected to SurrealDB");
 
     info!("Connecting to Meilisearch at {}...", config.meilisearch_url);
