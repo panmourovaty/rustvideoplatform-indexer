@@ -2,27 +2,49 @@ name: Docker Image CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["**"]
   pull_request:
     branches: ["main"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  build-primary:
+  build-dev:
+    if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKERPW }}" | docker login -u "panmourovaty" --password-stdin
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: panmourovaty/rustvideoplatform-indexer:dev
+
+  build:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
+          - arch: amd64
             runner: ubuntu-latest
-          - platform: linux/arm64
+          - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Prepare platform name
-        run: echo "PLATFORM_PAIR=$(echo ${{ matrix.platform }} | tr '/' '-')" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -30,130 +52,54 @@ jobs:
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKERPW }}" | docker login -u "panmourovaty" --password-stdin
 
-      - name: Build and push by digest
+      - name: Build and push
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: ${{ matrix.platform }}
-          outputs: type=image,name=panmourovaty/rustvideoplatform-indexer,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-
-      - name: Export digest
-        if: github.event_name != 'pull_request'
-        run: |
-          mkdir -p /tmp/digests
-          touch "/tmp/digests/${DIGEST#sha256:}"
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: |
+            type=image,name=panmourovaty/rustvideoplatform-indexer,push-by-digest=true,push=true
+            type=local,dest=/tmp/build-output
 
       - name: Upload digest
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v6
-        with:
-          name: digest-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
+        run: |
+          mkdir /tmp/digest
+          printf '%s' "${{ steps.build.outputs.digest }}" > /tmp/digest/${{ matrix.arch }}.txt
 
-  build-secondary:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/ppc64le
-            runner: ubuntu-latest
-          - platform: linux/riscv64
-            runner: ubuntu-latest
-    runs-on: ${{ matrix.runner }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digest/${{ matrix.arch }}.txt
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustvideoplatform-indexer-linux-${{ matrix.arch }}
+          path: /tmp/build-output/opt/rustvideoplatform-indexer
+          if-no-files-found: error
+
+  merge:
+    runs-on: ubuntu-latest
+    if: needs.build.result == 'success'
+    needs: build
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Prepare platform name
-        run: echo "PLATFORM_PAIR=$(echo ${{ matrix.platform }} | tr '/' '-')" >> $GITHUB_ENV
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKERPW }}" | docker login -u "panmourovaty" --password-stdin
 
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          outputs: type=image,name=panmourovaty/rustvideoplatform-indexer,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-
-      - name: Export digest
-        if: github.event_name != 'pull_request'
-        run: |
-          mkdir -p /tmp/digests
-          touch "/tmp/digests/${DIGEST#sha256:}"
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-
-      - name: Upload digest
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v6
-        with:
-          name: digest-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge-primary:
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    needs: build-primary
-
-    steps:
       - name: Download digests
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
-          path: /tmp/digests
-          pattern: digest-linux-{amd64,arm64}
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKERPW }}" | docker login -u "panmourovaty" --password-stdin
-
-      - name: Create and push manifest
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            --tag panmourovaty/rustvideoplatform-indexer:latest \
-            $(printf 'panmourovaty/rustvideoplatform-indexer@sha256:%s ' *)
-
-  merge-full:
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    needs: [build-primary, build-secondary]
-
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v6
-        with:
-          path: /tmp/digests
           pattern: digest-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKERPW }}" | docker login -u "panmourovaty" --password-stdin
+          path: /tmp/digests
 
       - name: Create and push manifest
-        working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             --tag panmourovaty/rustvideoplatform-indexer:latest \
-            $(printf 'panmourovaty/rustvideoplatform-indexer@sha256:%s ' *)
+            "panmourovaty/rustvideoplatform-indexer@$(cat /tmp/digests/digest-amd64/amd64.txt)" \
+            "panmourovaty/rustvideoplatform-indexer@$(cat /tmp/digests/digest-arm64/arm64.txt)"
