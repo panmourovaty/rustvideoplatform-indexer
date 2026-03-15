@@ -8,17 +8,19 @@ ARG TARGETARCH
 # Pre-build dependencies (cached layer - only invalidated when Cargo.toml changes)
 COPY Cargo.toml /src/rustvideoplatform-indexer/
 RUN mkdir -p /src/rustvideoplatform-indexer/src && echo 'fn main() {}' > /src/rustvideoplatform-indexer/src/main.rs
-RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-reg-${TARGETARCH},sharing=locked \
-    --mount=type=cache,target=/root/.cargo/git,id=cargo-git-${TARGETARCH},sharing=locked \
-    if [ "$TARGETARCH" = "amd64" ]; then export RUSTFLAGS="-C target-cpu=x86-64-v2"; fi \
-    && cd /src/rustvideoplatform-indexer && cargo build --release 2>/dev/null ; true
+RUN case "$TARGETARCH" in \
+        amd64)   export RUSTFLAGS="-C target-cpu=x86-64-v2" ;; \
+        ppc64le) export RUSTFLAGS="-C target-cpu=pwr8" ;; \
+    esac && \
+    cd /src/rustvideoplatform-indexer && cargo build --release 2>/dev/null ; true
 
 # Build actual project
 COPY ./ /src/rustvideoplatform-indexer
-RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-reg-${TARGETARCH},sharing=locked \
-    --mount=type=cache,target=/root/.cargo/git,id=cargo-git-${TARGETARCH},sharing=locked \
-    if [ "$TARGETARCH" = "amd64" ]; then export RUSTFLAGS="-C target-cpu=x86-64-v2"; fi \
-    && cd /src/rustvideoplatform-indexer && cargo build --release
+RUN case "$TARGETARCH" in \
+        amd64)   export RUSTFLAGS="-C target-cpu=x86-64-v2" ;; \
+        ppc64le) export RUSTFLAGS="-C target-cpu=pwr8" ;; \
+    esac && \
+    cd /src/rustvideoplatform-indexer && cargo build --release
 
 
 FROM alpine:edge
