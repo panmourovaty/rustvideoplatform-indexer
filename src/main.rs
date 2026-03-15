@@ -7,10 +7,14 @@ mod sprite;
 mod sync;
 
 use log::{error, info};
-use sqlx::postgres::PgPoolOptions;
+use surrealdb::engine::remote::ws::{Client as WsClient, Ws};
+use surrealdb::opt::auth::Root;
+use surrealdb::Surreal;
 
 use crate::config::Config;
 use crate::meilisearch::MeiliIndex;
+
+type Db = Surreal<WsClient>;
 
 #[tokio::main]
 async fn main() {
@@ -18,13 +22,21 @@ async fn main() {
 
     let config = Config::load();
 
-    info!("Connecting to PostgreSQL...");
-    let pool = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&config.dbconnection)
+    info!("Connecting to SurrealDB at {}...", config.surrealdb_url);
+    let db: Db = Surreal::new::<Ws>(&config.surrealdb_url)
         .await
-        .expect("Failed to connect to PostgreSQL");
-    info!("Connected to PostgreSQL");
+        .expect("Failed to connect to SurrealDB");
+    db.signin(Root {
+        username: &config.surrealdb_user,
+        password: &config.surrealdb_pass,
+    })
+    .await
+    .expect("Failed to sign in to SurrealDB");
+    db.use_ns(&config.surrealdb_ns)
+        .use_db(&config.surrealdb_db)
+        .await
+        .expect("Failed to select namespace/database");
+    info!("Connected to SurrealDB");
 
     info!("Connecting to Meilisearch at {}...", config.meilisearch_url);
     let media_meili = MeiliIndex::new(
@@ -60,28 +72,22 @@ async fn main() {
         .await
         .expect("Failed to configure users index");
 
-    // Ensure PostgreSQL triggers exist for all three tables
-    setup_media_notify_trigger(&pool, &config.notify_channel).await;
-    setup_list_notify_trigger(&pool, &config.list_notify_channel).await;
-    setup_list_items_notify_trigger(&pool, &config.list_notify_channel).await;
-    setup_user_notify_trigger(&pool, &config.user_notify_channel).await;
-
     // Perform initial full sync for all entity types
-    match sync::full_sync(&pool, &media_meili, config.batch_size).await {
+    match sync::full_sync(&db, &media_meili, config.batch_size).await {
         Ok(count) => info!("Media sync completed: {count} documents"),
         Err(e) => {
             error!("Media sync failed: {e}");
             std::process::exit(1);
         }
     }
-    match sync::full_sync_lists(&pool, &lists_meili, config.batch_size).await {
+    match sync::full_sync_lists(&db, &lists_meili, config.batch_size).await {
         Ok(count) => info!("List sync completed: {count} documents"),
         Err(e) => {
             error!("List sync failed: {e}");
             std::process::exit(1);
         }
     }
-    match sync::full_sync_users(&pool, &users_meili, config.batch_size).await {
+    match sync::full_sync_users(&db, &users_meili, config.batch_size).await {
         Ok(count) => info!("User sync completed: {count} documents"),
         Err(e) => {
             error!("User sync failed: {e}");
@@ -102,32 +108,32 @@ async fn main() {
     info!("Starting change listeners and cache refresh...");
     info!("Send SIGTERM or SIGINT (Ctrl+C) to stop");
 
-    // Spawn listener tasks for each entity type
-    let media_pool = pool.clone();
-    let media_channel = config.notify_channel.clone();
+    // Spawn listener tasks for each entity type (each gets its own cloned Db connection)
+    let media_db = db.clone();
+    let media_meili_clone = media_meili.clone();
     let media_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&media_pool, &media_meili, &media_channel, "media").await;
+        listener::listen_for_changes(media_db, media_meili_clone, "media").await;
     });
 
-    let list_pool = pool.clone();
-    let list_channel = config.list_notify_channel.clone();
+    let list_db = db.clone();
+    let lists_meili_clone = lists_meili.clone();
     let list_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&list_pool, &lists_meili, &list_channel, "list").await;
+        listener::listen_for_changes(list_db, lists_meili_clone, "list").await;
     });
 
-    let user_pool = pool.clone();
-    let user_channel = config.user_notify_channel.clone();
+    let user_db = db.clone();
+    let users_meili_clone = users_meili.clone();
     let user_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&user_pool, &users_meili, &user_channel, "user").await;
+        listener::listen_for_changes(user_db, users_meili_clone, "user").await;
     });
 
     // Periodic cache refresh task
-    let cache_pool = pool.clone();
+    let cache_db = db.clone();
     let source_dir = config.source_dir.clone();
     let sprite_items = config.sprite_items;
     let cache_interval = config.cache_interval_secs;
     let cache_handle = tokio::spawn(async move {
-        cache::run_periodic_cache(cache_pool, redis_conn, cache_interval, source_dir, sprite_items)
+        cache::run_periodic_cache(cache_db, redis_conn, cache_interval, source_dir, sprite_items)
             .await;
     });
 
@@ -165,199 +171,9 @@ async fn main() {
     }
 
     info!("Shutting down...");
-    pool.close().await;
     if exit_code != 0 {
         error!("Exiting with code {} due to unexpected task failure", exit_code);
     }
     info!("Goodbye!");
     std::process::exit(exit_code);
-}
-
-/// Create the PostgreSQL trigger for media changes.
-async fn setup_media_notify_trigger(pool: &sqlx::PgPool, channel: &str) {
-    info!("Ensuring PostgreSQL media notify trigger exists...");
-
-    let function_sql = format!(
-        r#"
-        CREATE OR REPLACE FUNCTION notify_media_changes() RETURNS trigger AS $$
-        BEGIN
-            IF TG_OP = 'DELETE' THEN
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', OLD.id)::text);
-                RETURN OLD;
-            ELSE
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', NEW.id)::text);
-                RETURN NEW;
-            END IF;
-        END;
-        $$ LANGUAGE plpgsql;
-        "#
-    );
-
-    if let Err(e) = sqlx::query(&function_sql).execute(pool).await {
-        error!("Failed to create media notify function: {e}");
-        return;
-    }
-
-    let trigger_sql = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_trigger WHERE tgname = 'media_notify_trigger'
-            ) THEN
-                CREATE TRIGGER media_notify_trigger
-                    AFTER INSERT OR UPDATE OR DELETE ON media
-                    FOR EACH ROW EXECUTE FUNCTION notify_media_changes();
-            END IF;
-        END;
-        $$;
-    "#;
-
-    if let Err(e) = sqlx::query(trigger_sql).execute(pool).await {
-        error!("Failed to create media notify trigger: {e}");
-        return;
-    }
-
-    info!("PostgreSQL media notify trigger is ready");
-}
-
-/// Create the PostgreSQL trigger for list changes.
-async fn setup_list_notify_trigger(pool: &sqlx::PgPool, channel: &str) {
-    info!("Ensuring PostgreSQL list notify trigger exists...");
-
-    let function_sql = format!(
-        r#"
-        CREATE OR REPLACE FUNCTION notify_list_changes() RETURNS trigger AS $$
-        BEGIN
-            IF TG_OP = 'DELETE' THEN
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', OLD.id)::text);
-                RETURN OLD;
-            ELSE
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', NEW.id)::text);
-                RETURN NEW;
-            END IF;
-        END;
-        $$ LANGUAGE plpgsql;
-        "#
-    );
-
-    if let Err(e) = sqlx::query(&function_sql).execute(pool).await {
-        error!("Failed to create list notify function: {e}");
-        return;
-    }
-
-    let trigger_sql = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_trigger WHERE tgname = 'list_notify_trigger'
-            ) THEN
-                CREATE TRIGGER list_notify_trigger
-                    AFTER INSERT OR UPDATE OR DELETE ON lists
-                    FOR EACH ROW EXECUTE FUNCTION notify_list_changes();
-            END IF;
-        END;
-        $$;
-    "#;
-
-    if let Err(e) = sqlx::query(trigger_sql).execute(pool).await {
-        error!("Failed to create list notify trigger: {e}");
-        return;
-    }
-
-    info!("PostgreSQL list notify trigger is ready");
-}
-
-/// Create the PostgreSQL trigger on list_items so item_count stays fresh.
-/// Fires an UPDATE event on the parent list whenever items are added/removed.
-async fn setup_list_items_notify_trigger(pool: &sqlx::PgPool, channel: &str) {
-    info!("Ensuring PostgreSQL list_items notify trigger exists...");
-
-    let function_sql = format!(
-        r#"
-        CREATE OR REPLACE FUNCTION notify_list_item_changes() RETURNS trigger AS $$
-        BEGIN
-            IF TG_OP = 'DELETE' THEN
-                PERFORM pg_notify('{channel}', json_build_object('operation', 'UPDATE', 'id', OLD.list_id)::text);
-                RETURN OLD;
-            ELSE
-                PERFORM pg_notify('{channel}', json_build_object('operation', 'UPDATE', 'id', NEW.list_id)::text);
-                RETURN NEW;
-            END IF;
-        END;
-        $$ LANGUAGE plpgsql;
-        "#
-    );
-
-    if let Err(e) = sqlx::query(&function_sql).execute(pool).await {
-        error!("Failed to create list_items notify function: {e}");
-        return;
-    }
-
-    let trigger_sql = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_trigger WHERE tgname = 'list_item_notify_trigger'
-            ) THEN
-                CREATE TRIGGER list_item_notify_trigger
-                    AFTER INSERT OR DELETE ON list_items
-                    FOR EACH ROW EXECUTE FUNCTION notify_list_item_changes();
-            END IF;
-        END;
-        $$;
-    "#;
-
-    if let Err(e) = sqlx::query(trigger_sql).execute(pool).await {
-        error!("Failed to create list_items notify trigger: {e}");
-        return;
-    }
-
-    info!("PostgreSQL list_items notify trigger is ready");
-}
-
-/// Create the PostgreSQL trigger for user changes.
-async fn setup_user_notify_trigger(pool: &sqlx::PgPool, channel: &str) {
-    info!("Ensuring PostgreSQL user notify trigger exists...");
-
-    let function_sql = format!(
-        r#"
-        CREATE OR REPLACE FUNCTION notify_user_changes() RETURNS trigger AS $$
-        BEGIN
-            IF TG_OP = 'DELETE' THEN
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', OLD.login)::text);
-                RETURN OLD;
-            ELSE
-                PERFORM pg_notify('{channel}', json_build_object('operation', TG_OP, 'id', NEW.login)::text);
-                RETURN NEW;
-            END IF;
-        END;
-        $$ LANGUAGE plpgsql;
-        "#
-    );
-
-    if let Err(e) = sqlx::query(&function_sql).execute(pool).await {
-        error!("Failed to create user notify function: {e}");
-        return;
-    }
-
-    let trigger_sql = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_trigger WHERE tgname = 'user_notify_trigger'
-            ) THEN
-                CREATE TRIGGER user_notify_trigger
-                    AFTER INSERT OR UPDATE OR DELETE ON users
-                    FOR EACH ROW EXECUTE FUNCTION notify_user_changes();
-            END IF;
-        END;
-        $$;
-    "#;
-
-    if let Err(e) = sqlx::query(trigger_sql).execute(pool).await {
-        error!("Failed to create user notify trigger: {e}");
-        return;
-    }
-
-    info!("PostgreSQL user notify trigger is ready");
 }

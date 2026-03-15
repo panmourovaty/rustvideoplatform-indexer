@@ -1,9 +1,14 @@
 {
-    "database_url": "postgresql://vids:YOURPASSWORD@postgres:5432/vids",
+    "surrealdb_url": "ws://surrealdb:8000",
+    "surrealdb_ns": "main",
+    "surrealdb_db": "main",
+    "surrealdb_user": "root",
+    "surrealdb_pass": "SECRET_PASSWORD_HERE",
     "meilisearch_url": "http://meilisearch:7700",
-    "meilisearch_key": null,
+    "meilisearch_key": "SECRET_PASSWORD_HERE",
     "batch_size": 1000,
-    "notify_channel": "media_changes",
     "redis_url": "redis://dragonfly:6379",
-    "cache_interval_secs": 60
+    "cache_interval_secs": 60,
+    "source_dir": "source",
+    "sprite_items": 30
 }
