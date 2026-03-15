@@ -1,5 +1,5 @@
 use log::{error, info};
-use surrealdb::engine::remote::ws::WsClient;
+use surrealdb::engine::remote::ws::Client as WsClient;
 use surrealdb::Surreal;
 
 use crate::meilisearch::MeiliIndex;

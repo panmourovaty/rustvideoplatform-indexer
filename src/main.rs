@@ -7,7 +7,7 @@ mod sprite;
 mod sync;
 
 use log::{error, info};
-use surrealdb::engine::remote::ws::{Ws, WsClient};
+use surrealdb::engine::remote::ws::{Client as WsClient, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
 

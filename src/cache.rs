@@ -1,7 +1,7 @@
 use log::{error, info};
 use redis::AsyncCommands;
 use serde::Deserialize;
-use surrealdb::engine::remote::ws::WsClient;
+use surrealdb::engine::remote::ws::Client as WsClient;
 use surrealdb::Surreal;
 use std::time::Duration;
 

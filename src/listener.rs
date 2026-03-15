@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use log::{error, info, warn};
 use serde::Deserialize;
-use surrealdb::engine::remote::ws::WsClient;
+use surrealdb::engine::remote::ws::Client as WsClient;
 use surrealdb::{Action, Notification, Surreal};
 
 use crate::meilisearch::MeiliIndex;
