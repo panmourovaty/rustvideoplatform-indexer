@@ -9,7 +9,7 @@ lto = true
 
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
-surrealdb = { version = "2", features = ["protocol-ws", "rustls"] }
+surrealdb = { version = "3", features = ["protocol-ws", "rustls"] }
 futures = "0.3"
 meilisearch-sdk = "0.32"
 serde = { version = "1.0", features = ["derive"] }
