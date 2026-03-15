@@ -136,30 +136,41 @@ async fn main() {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("Failed to register SIGTERM handler");
 
+    let exit_code;
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("Received SIGINT (Ctrl+C), shutting down...");
+            exit_code = 0;
         }
         _ = sigterm.recv() => {
             info!("Received SIGTERM, shutting down...");
+            exit_code = 0;
         }
         result = media_handle => {
             error!("Media listener task exited unexpectedly: {:?}", result);
+            exit_code = 1;
         }
         result = list_handle => {
             error!("List listener task exited unexpectedly: {:?}", result);
+            exit_code = 1;
         }
         result = user_handle => {
             error!("User listener task exited unexpectedly: {:?}", result);
+            exit_code = 1;
         }
         result = cache_handle => {
             error!("Cache task exited unexpectedly: {:?}", result);
+            exit_code = 1;
         }
     }
 
     info!("Shutting down...");
     pool.close().await;
+    if exit_code != 0 {
+        error!("Exiting with code {} due to unexpected task failure", exit_code);
+    }
     info!("Goodbye!");
+    std::process::exit(exit_code);
 }
 
 /// Create the PostgreSQL trigger for media changes.
