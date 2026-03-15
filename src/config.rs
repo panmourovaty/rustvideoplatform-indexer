@@ -26,7 +26,7 @@ pub struct Config {
     /// Path to the source directory containing media files (for sprite generation)
     #[serde(default = "default_source_dir")]
     pub source_dir: String,
-    /// Number of top trending items to include in the sprite (default: 20)
+    /// Number of top trending items to include in the sprite (default: 30)
     #[serde(default = "default_sprite_items")]
     pub sprite_items: usize,
 }
@@ -56,7 +56,7 @@ fn default_source_dir() -> String {
 }
 
 fn default_sprite_items() -> usize {
-    20
+    30
 }
 
 impl Config {
