@@ -4,13 +4,9 @@ use std::env;
 #[derive(Deserialize, Clone)]
 pub struct Config {
     pub surrealdb_url: String,
-    #[serde(default = "default_surrealdb_ns")]
     pub surrealdb_ns: String,
-    #[serde(default = "default_surrealdb_db")]
     pub surrealdb_db: String,
-    #[serde(default = "default_surrealdb_user")]
     pub surrealdb_user: String,
-    #[serde(default = "default_surrealdb_pass")]
     pub surrealdb_pass: String,
     pub meilisearch_url: String,
     pub meilisearch_key: Option<String>,
@@ -25,10 +21,6 @@ pub struct Config {
     pub sprite_items: usize,
 }
 
-fn default_surrealdb_ns() -> String { "main".to_string() }
-fn default_surrealdb_db() -> String { "main".to_string() }
-fn default_surrealdb_user() -> String { "root".to_string() }
-fn default_surrealdb_pass() -> String { "root".to_string() }
 fn default_batch_size() -> usize { 1000 }
 fn default_cache_interval() -> u64 { 60 }
 fn default_source_dir() -> String { "source".to_string() }
@@ -43,10 +35,14 @@ impl Config {
         Config {
             surrealdb_url: env::var("SURREALDB_URL")
                 .expect("SURREALDB_URL must be set (or provide config.json)"),
-            surrealdb_ns: env::var("SURREALDB_NS").unwrap_or_else(|_| default_surrealdb_ns()),
-            surrealdb_db: env::var("SURREALDB_DB").unwrap_or_else(|_| default_surrealdb_db()),
-            surrealdb_user: env::var("SURREALDB_USER").unwrap_or_else(|_| default_surrealdb_user()),
-            surrealdb_pass: env::var("SURREALDB_PASS").unwrap_or_else(|_| default_surrealdb_pass()),
+            surrealdb_ns: env::var("SURREALDB_NS")
+                .expect("SURREALDB_NS must be set (or provide config.json)"),
+            surrealdb_db: env::var("SURREALDB_DB")
+                .expect("SURREALDB_DB must be set (or provide config.json)"),
+            surrealdb_user: env::var("SURREALDB_USER")
+                .expect("SURREALDB_USER must be set (or provide config.json)"),
+            surrealdb_pass: env::var("SURREALDB_PASS")
+                .expect("SURREALDB_PASS must be set (or provide config.json)"),
             meilisearch_url: env::var("MEILISEARCH_URL")
                 .unwrap_or_else(|_| "http://localhost:7700".to_string()),
             meilisearch_key: env::var("MEILISEARCH_KEY").ok(),
