@@ -1,5 +1,6 @@
 use log::{error, info};
 use surrealdb::engine::remote::ws::Client as WsClient;
+use surrealdb::types::{RecordId, SurrealValue};
 use surrealdb::Surreal;
 
 use crate::meilisearch::MeiliIndex;
@@ -20,7 +21,7 @@ pub async fn full_sync(
     let mut count_resp = db
         .query("SELECT count() FROM media GROUP ALL")
         .await?;
-    #[derive(serde::Deserialize)]
+    #[derive(serde::Deserialize, SurrealValue)]
     struct CountRow { count: i64 }
     let count_row: Option<CountRow> = count_resp.take(0)?;
     let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
@@ -72,7 +73,7 @@ pub async fn sync_single(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
         .query("SELECT meta::id(id) AS id, name, owner, views, likes_count AS likes, dislikes_count AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
-        .bind(("id", surrealdb::RecordId::from_table_key("media", media_id)))
+        .bind(("id", RecordId::new("media", media_id)))
         .await?;
 
     let row: Option<MeiliMedia> = resp.take(0)?;
@@ -125,7 +126,7 @@ pub async fn full_sync_lists(
     let mut count_resp = db
         .query("SELECT count() FROM lists WHERE visibility != 'hidden' GROUP ALL")
         .await?;
-    #[derive(serde::Deserialize)]
+    #[derive(serde::Deserialize, SurrealValue)]
     struct CountRow { count: i64 }
     let count_row: Option<CountRow> = count_resp.take(0)?;
     let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
@@ -177,7 +178,7 @@ pub async fn sync_single_list(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
         .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, (SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count AS item_count, created FROM lists WHERE id = $id")
-        .bind(("id", surrealdb::RecordId::from_table_key("lists", list_id)))
+        .bind(("id", RecordId::new("lists", list_id)))
         .await?;
 
     let row: Option<MeiliList> = resp.take(0)?;
@@ -234,7 +235,7 @@ pub async fn full_sync_users(
     let mut count_resp = db
         .query("SELECT count() FROM users GROUP ALL")
         .await?;
-    #[derive(serde::Deserialize)]
+    #[derive(serde::Deserialize, SurrealValue)]
     struct CountRow { count: i64 }
     let count_row: Option<CountRow> = count_resp.take(0)?;
     let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
@@ -286,7 +287,7 @@ pub async fn sync_single_user(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
         .query("SELECT meta::id(id) AS login, name, profile_picture FROM users WHERE id = $id")
-        .bind(("id", surrealdb::RecordId::from_table_key("users", login)))
+        .bind(("id", RecordId::new("users", login)))
         .await?;
 
     let row: Option<MeiliUser> = resp.take(0)?;

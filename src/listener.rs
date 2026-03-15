@@ -2,7 +2,8 @@ use futures::StreamExt;
 use log::{error, info, warn};
 use serde::Deserialize;
 use surrealdb::engine::remote::ws::Client as WsClient;
-use surrealdb::{Action, Notification, Surreal};
+use surrealdb::types::{Action, RecordId, SurrealValue};
+use surrealdb::{Notification, Surreal};
 
 use crate::meilisearch::MeiliIndex;
 use crate::sync;
@@ -10,9 +11,9 @@ use crate::sync;
 type Db = Surreal<WsClient>;
 
 /// Generic record with just an id field, used to extract the ID from delete notifications.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 struct IdRecord {
-    id: surrealdb::RecordId,
+    id: RecordId,
 }
 
 /// Listen for SurrealDB live query events and dispatch to the appropriate handler.

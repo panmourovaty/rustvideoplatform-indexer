@@ -9,6 +9,7 @@ mod sync;
 use log::{error, info};
 use surrealdb::engine::remote::ws::{Client as WsClient, Ws};
 use surrealdb::opt::auth::Root;
+use surrealdb::types::{RecordId, SurrealValue};
 use surrealdb::Surreal;
 
 use crate::config::Config;
@@ -27,8 +28,8 @@ async fn main() {
         .await
         .expect("Failed to connect to SurrealDB");
     db.signin(Root {
-        username: &config.surrealdb_user,
-        password: &config.surrealdb_pass,
+        username: config.surrealdb_user.clone(),
+        password: config.surrealdb_pass.clone(),
     })
     .await
     .expect("Failed to sign in to SurrealDB");

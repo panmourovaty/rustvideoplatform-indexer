@@ -1,7 +1,8 @@
+use surrealdb::types::SurrealValue;
 use serde::{Deserialize, Serialize};
 
 /// Document schema for the Meilisearch "media" index.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
 pub struct MeiliMedia {
     pub id: String,
     pub name: String,
@@ -18,7 +19,7 @@ pub struct MeiliMedia {
 }
 
 /// Document schema for the Meilisearch "lists" index.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
 pub struct MeiliList {
     pub id: String,
     pub name: String,
@@ -30,7 +31,7 @@ pub struct MeiliList {
 }
 
 /// Document schema for the Meilisearch "users" index.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
 pub struct MeiliUser {
     /// Primary key — the user's login name.
     pub login: String,

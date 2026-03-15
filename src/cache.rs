@@ -2,6 +2,7 @@ use log::{error, info};
 use redis::AsyncCommands;
 use serde::Deserialize;
 use surrealdb::engine::remote::ws::Client as WsClient;
+use surrealdb::types::SurrealValue;
 use surrealdb::Surreal;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ type Db = Surreal<WsClient>;
 type RedisConn = redis::aio::ConnectionManager;
 
 /// Media data used for building both reaction counts and trending cache.
-#[derive(Deserialize)]
+#[derive(Deserialize, SurrealValue)]
 struct MediaCacheData {
     id: String,
     name: String,
