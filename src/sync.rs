@@ -37,7 +37,7 @@ pub async fn full_sync(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, name, owner, views, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'like')) AS likes, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'dislike')) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, name, owner, views, likes_count AS likes, dislikes_count AS dislikes, type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -71,7 +71,7 @@ pub async fn sync_single(
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, views, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'like')) AS likes, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'dislike')) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, name, owner, views, likes_count AS likes, dislikes_count AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
         .bind(("id", surrealdb::RecordId::from_table_key("media", media_id)))
         .await?;
 
@@ -142,7 +142,7 @@ pub async fn full_sync_lists(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, array::len((SELECT id FROM list_items WHERE list_id = $parent.id)) AS item_count, created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, (SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count AS item_count, created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -176,7 +176,7 @@ pub async fn sync_single_list(
     list_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, array::len((SELECT id FROM list_items WHERE list_id = $parent.id)) AS item_count, created FROM lists WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, (SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count AS item_count, created FROM lists WHERE id = $id")
         .bind(("id", surrealdb::RecordId::from_table_key("lists", list_id)))
         .await?;
 
