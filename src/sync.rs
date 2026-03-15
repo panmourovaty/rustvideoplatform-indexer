@@ -38,7 +38,7 @@ pub async fn full_sync(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, name, owner, views, likes_count AS likes, dislikes_count AS dislikes, type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, name, owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -72,7 +72,7 @@ pub async fn sync_single(
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, views, likes_count AS likes, dislikes_count AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, name, owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
         .bind(("id", RecordId::new("media", media_id)))
         .await?;
 
