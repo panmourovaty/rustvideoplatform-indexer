@@ -1,23 +1,29 @@
 use log::{error, info};
-use sqlx::PgPool;
+use surrealdb::engine::remote::ws::WsClient;
+use surrealdb::Surreal;
 
 use crate::meilisearch::MeiliIndex;
 use crate::model::{MeiliList, MeiliMedia, MeiliUser};
 
+type Db = Surreal<WsClient>;
+
 // --- Media ---
 
-/// Perform a full sync of all media records from PostgreSQL into Meilisearch.
+/// Perform a full sync of all media records from SurrealDB into Meilisearch.
 pub async fn full_sync(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     batch_size: usize,
 ) -> Result<u64, Box<dyn std::error::Error>> {
-    info!("Starting full sync from PostgreSQL to Meilisearch...");
+    info!("Starting full sync from SurrealDB to Meilisearch...");
 
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM media")
-        .fetch_one(pool)
+    let mut count_resp = db
+        .query("SELECT count() FROM media GROUP ALL")
         .await?;
-    let total = total.0 as u64;
+    #[derive(serde::Deserialize)]
+    struct CountRow { count: i64 }
+    let count_row: Option<CountRow> = count_resp.take(0)?;
+    let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
 
     info!("Found {total} media records to index");
 
@@ -30,20 +36,13 @@ pub async fn full_sync(
     let mut offset: i64 = 0;
 
     loop {
-        let batch: Vec<MeiliMedia> = sqlx::query_as(
-            "SELECT m.id, m.name, m.owner, m.views, \
-             COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
-             COUNT(*) FILTER (WHERE ml.reaction = 'dislike') AS dislikes, \
-             m.type, m.upload, m.public, m.visibility, m.restricted_to_group \
-             FROM media m \
-             LEFT JOIN media_likes ml ON m.id = ml.media_id \
-             GROUP BY m.id, m.name, m.owner, m.views, m.type, m.upload, m.public, m.visibility, m.restricted_to_group \
-             ORDER BY m.upload ASC LIMIT $1 OFFSET $2",
-        )
-        .bind(batch_size as i64)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        let mut resp = db
+            .query("SELECT meta::id(id) AS id, name, owner, views, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'like')) AS likes, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'dislike')) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
+            .bind(("batch", batch_size as i64))
+            .bind(("offset", offset))
+            .await?;
+
+        let batch: Vec<MeiliMedia> = resp.take(0)?;
 
         if batch.is_empty() {
             break;
@@ -67,23 +66,16 @@ pub async fn full_sync(
 
 /// Fetch a single media record by ID and upsert it into Meilisearch.
 pub async fn sync_single(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let row: Option<MeiliMedia> = sqlx::query_as(
-        "SELECT m.id, m.name, m.owner, m.views, \
-         COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
-         COUNT(*) FILTER (WHERE ml.reaction = 'dislike') AS dislikes, \
-         m.type, m.upload, m.public, m.visibility, m.restricted_to_group \
-         FROM media m \
-         LEFT JOIN media_likes ml ON m.id = ml.media_id \
-         WHERE m.id = $1 \
-         GROUP BY m.id, m.name, m.owner, m.views, m.type, m.upload, m.public, m.visibility, m.restricted_to_group",
-    )
-    .bind(media_id)
-    .fetch_optional(pool)
-    .await?;
+    let mut resp = db
+        .query("SELECT meta::id(id) AS id, name, owner, views, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'like')) AS likes, array::len((SELECT id FROM media_likes WHERE media_id = $parent.id AND reaction = 'dislike')) AS dislikes, type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
+        .bind(("id", surrealdb::RecordId::from_table_key("media", media_id)))
+        .await?;
+
+    let row: Option<MeiliMedia> = resp.take(0)?;
 
     match row {
         Some(doc) => {
@@ -99,16 +91,16 @@ pub async fn sync_single(
     Ok(())
 }
 
-/// Handle a media change event received via LISTEN/NOTIFY.
+/// Handle a media change event.
 pub async fn handle_change(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     operation: &str,
     media_id: &str,
 ) {
     let result = match operation {
         "DELETE" => meili.delete_document(media_id).await,
-        "INSERT" | "UPDATE" => sync_single(pool, meili, media_id).await,
+        "INSERT" | "UPDATE" => sync_single(db, meili, media_id).await,
         other => {
             error!("Unknown operation: {other}");
             return;
@@ -122,18 +114,21 @@ pub async fn handle_change(
 
 // --- Lists ---
 
-/// Perform a full sync of all public/restricted lists from PostgreSQL into Meilisearch.
+/// Perform a full sync of all public/restricted lists from SurrealDB into Meilisearch.
 pub async fn full_sync_lists(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     batch_size: usize,
 ) -> Result<u64, Box<dyn std::error::Error>> {
-    info!("Starting full list sync from PostgreSQL to Meilisearch...");
+    info!("Starting full list sync from SurrealDB to Meilisearch...");
 
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM lists WHERE visibility != 'hidden'")
-        .fetch_one(pool)
+    let mut count_resp = db
+        .query("SELECT count() FROM lists WHERE visibility != 'hidden' GROUP ALL")
         .await?;
-    let total = total.0 as u64;
+    #[derive(serde::Deserialize)]
+    struct CountRow { count: i64 }
+    let count_row: Option<CountRow> = count_resp.take(0)?;
+    let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
 
     info!("Found {total} list records to index");
 
@@ -146,18 +141,13 @@ pub async fn full_sync_lists(
     let mut offset: i64 = 0;
 
     loop {
-        let batch: Vec<MeiliList> = sqlx::query_as(
-            "SELECT l.id, l.name, l.owner, l.visibility, l.restricted_to_group, \
-             COALESCE((SELECT COUNT(*) FROM list_items li WHERE li.list_id = l.id), 0)::bigint AS item_count, \
-             l.created \
-             FROM lists l \
-             WHERE l.visibility != 'hidden' \
-             ORDER BY l.created ASC LIMIT $1 OFFSET $2",
-        )
-        .bind(batch_size as i64)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        let mut resp = db
+            .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, array::len((SELECT id FROM list_items WHERE list_id = $parent.id)) AS item_count, created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
+            .bind(("batch", batch_size as i64))
+            .bind(("offset", offset))
+            .await?;
+
+        let batch: Vec<MeiliList> = resp.take(0)?;
 
         if batch.is_empty() {
             break;
@@ -181,19 +171,16 @@ pub async fn full_sync_lists(
 
 /// Fetch a single list record by ID and upsert/delete it in Meilisearch.
 pub async fn sync_single_list(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     list_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let row: Option<MeiliList> = sqlx::query_as(
-        "SELECT l.id, l.name, l.owner, l.visibility, l.restricted_to_group, \
-         COALESCE((SELECT COUNT(*) FROM list_items li WHERE li.list_id = l.id), 0)::bigint AS item_count, \
-         l.created \
-         FROM lists l WHERE l.id = $1",
-    )
-    .bind(list_id)
-    .fetch_optional(pool)
-    .await?;
+    let mut resp = db
+        .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, array::len((SELECT id FROM list_items WHERE list_id = $parent.id)) AS item_count, created FROM lists WHERE id = $id")
+        .bind(("id", surrealdb::RecordId::from_table_key("lists", list_id)))
+        .await?;
+
+    let row: Option<MeiliList> = resp.take(0)?;
 
     match row {
         Some(doc) if doc.visibility != "hidden" => {
@@ -201,7 +188,6 @@ pub async fn sync_single_list(
             info!("Upserted list '{list_id}' in Meilisearch");
         }
         Some(_) => {
-            // Hidden lists are not searchable — remove from index if present
             meili.delete_document(list_id).await?;
             info!("Removed hidden list '{list_id}' from Meilisearch");
         }
@@ -214,16 +200,16 @@ pub async fn sync_single_list(
     Ok(())
 }
 
-/// Handle a list change event received via LISTEN/NOTIFY.
+/// Handle a list change event.
 pub async fn handle_list_change(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     operation: &str,
     list_id: &str,
 ) {
     let result = match operation {
         "DELETE" => meili.delete_document(list_id).await,
-        "INSERT" | "UPDATE" => sync_single_list(pool, meili, list_id).await,
+        "INSERT" | "UPDATE" => sync_single_list(db, meili, list_id).await,
         other => {
             error!("Unknown list operation: {other}");
             return;
@@ -237,18 +223,21 @@ pub async fn handle_list_change(
 
 // --- Users ---
 
-/// Perform a full sync of all users from PostgreSQL into Meilisearch.
+/// Perform a full sync of all users from SurrealDB into Meilisearch.
 pub async fn full_sync_users(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     batch_size: usize,
 ) -> Result<u64, Box<dyn std::error::Error>> {
-    info!("Starting full user sync from PostgreSQL to Meilisearch...");
+    info!("Starting full user sync from SurrealDB to Meilisearch...");
 
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(pool)
+    let mut count_resp = db
+        .query("SELECT count() FROM users GROUP ALL")
         .await?;
-    let total = total.0 as u64;
+    #[derive(serde::Deserialize)]
+    struct CountRow { count: i64 }
+    let count_row: Option<CountRow> = count_resp.take(0)?;
+    let total = count_row.map(|r| r.count).unwrap_or(0) as u64;
 
     info!("Found {total} user records to index");
 
@@ -261,13 +250,13 @@ pub async fn full_sync_users(
     let mut offset: i64 = 0;
 
     loop {
-        let batch: Vec<MeiliUser> = sqlx::query_as(
-            "SELECT login, name, profile_picture FROM users ORDER BY login ASC LIMIT $1 OFFSET $2",
-        )
-        .bind(batch_size as i64)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        let mut resp = db
+            .query("SELECT meta::id(id) AS login, name, profile_picture FROM users ORDER BY id ASC LIMIT $batch START $offset")
+            .bind(("batch", batch_size as i64))
+            .bind(("offset", offset))
+            .await?;
+
+        let batch: Vec<MeiliUser> = resp.take(0)?;
 
         if batch.is_empty() {
             break;
@@ -291,16 +280,16 @@ pub async fn full_sync_users(
 
 /// Fetch a single user record by login and upsert/delete it in Meilisearch.
 pub async fn sync_single_user(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     login: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let row: Option<MeiliUser> = sqlx::query_as(
-        "SELECT login, name, profile_picture FROM users WHERE login = $1",
-    )
-    .bind(login)
-    .fetch_optional(pool)
-    .await?;
+    let mut resp = db
+        .query("SELECT meta::id(id) AS login, name, profile_picture FROM users WHERE id = $id")
+        .bind(("id", surrealdb::RecordId::from_table_key("users", login)))
+        .await?;
+
+    let row: Option<MeiliUser> = resp.take(0)?;
 
     match row {
         Some(doc) => {
@@ -316,16 +305,16 @@ pub async fn sync_single_user(
     Ok(())
 }
 
-/// Handle a user change event received via LISTEN/NOTIFY.
+/// Handle a user change event.
 pub async fn handle_user_change(
-    pool: &PgPool,
+    db: &Db,
     meili: &MeiliIndex,
     operation: &str,
     login: &str,
 ) {
     let result = match operation {
         "DELETE" => meili.delete_document(login).await,
-        "INSERT" | "UPDATE" => sync_single_user(pool, meili, login).await,
+        "INSERT" | "UPDATE" => sync_single_user(db, meili, login).await,
         other => {
             error!("Unknown user operation: {other}");
             return;
