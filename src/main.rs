@@ -100,7 +100,7 @@ async fn main() {
     info!("Connected to Redis");
 
     info!("Starting change listeners and cache refresh...");
-    info!("Press Ctrl+C to stop");
+    info!("Send SIGTERM or SIGINT (Ctrl+C) to stop");
 
     // Spawn listener tasks for each entity type
     let media_pool = pool.clone();
@@ -131,16 +131,33 @@ async fn main() {
             .await;
     });
 
-    // Wait for shutdown signal
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to listen for Ctrl+C");
+    // Wait for shutdown signal (SIGINT or SIGTERM) or unexpected task exit
+    let mut sigterm =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to register SIGTERM handler");
+
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            info!("Received SIGINT (Ctrl+C), shutting down...");
+        }
+        _ = sigterm.recv() => {
+            info!("Received SIGTERM, shutting down...");
+        }
+        result = media_handle => {
+            error!("Media listener task exited unexpectedly: {:?}", result);
+        }
+        result = list_handle => {
+            error!("List listener task exited unexpectedly: {:?}", result);
+        }
+        result = user_handle => {
+            error!("User listener task exited unexpectedly: {:?}", result);
+        }
+        result = cache_handle => {
+            error!("Cache task exited unexpectedly: {:?}", result);
+        }
+    }
 
     info!("Shutting down...");
-    media_handle.abort();
-    list_handle.abort();
-    user_handle.abort();
-    cache_handle.abort();
     pool.close().await;
     info!("Goodbye!");
 }
