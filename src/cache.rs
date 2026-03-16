@@ -22,8 +22,8 @@ struct MediaCacheData {
     owner: String,
     #[serde(default)]
     views: i64,
-    #[serde(rename = "type", default)]
-    r#type: String,
+    #[serde(default)]
+    medium_type: String,
     #[serde(default)]
     visibility: String,
     #[serde(default)]
@@ -73,7 +73,7 @@ async fn refresh_cache(
     current_sprite: &mut Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (type ?? '') AS type, (visibility ?? '') AS visibility, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes FROM media ORDER BY likes_count DESC")
+        .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (type ?? '') AS medium_type, (visibility ?? '') AS visibility, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes FROM media ORDER BY likes_count DESC")
         .await?;
 
     let all_media: Vec<MediaCacheData> = resp.take(0)?;
@@ -113,7 +113,7 @@ async fn refresh_cache(
                 pipe.hset(&info_key, "name", &item.name).ignore();
                 pipe.hset(&info_key, "owner", &item.owner).ignore();
                 pipe.hset(&info_key, "views", item.views).ignore();
-                pipe.hset(&info_key, "type", &item.r#type).ignore();
+                pipe.hset(&info_key, "medium_type", &item.medium_type).ignore();
                 pipe.expire(&info_key, 300).ignore();
                 trending_ids.push(item.id.clone());
             }

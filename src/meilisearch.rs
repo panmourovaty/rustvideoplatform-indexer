@@ -41,7 +41,7 @@ impl MeiliIndex {
         let task = index
             .set_filterable_attributes([
                 "public",
-                "type",
+                "medium_type",
                 "upload",
                 "views",
                 "likes",

@@ -16,8 +16,8 @@ pub struct MeiliMedia {
     pub likes: i64,
     #[serde(default)]
     pub dislikes: i64,
-    #[serde(rename = "type", default)]
-    pub r#type: String,
+    #[serde(default)]
+    pub medium_type: String,
     #[serde(default)]
     pub upload: i64,
     #[serde(default)]
