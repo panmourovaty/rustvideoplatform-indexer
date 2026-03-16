@@ -252,7 +252,7 @@ pub async fn full_sync_users(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture FROM users ORDER BY id ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture FROM users ORDER BY login ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
