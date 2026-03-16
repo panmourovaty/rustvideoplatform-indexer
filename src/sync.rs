@@ -38,7 +38,7 @@ pub async fn full_sync(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, name, owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS type, upload, public, visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS type, (upload ?? 0) AS upload, (public ?? false) AS public, (visibility ?? '') AS visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -72,7 +72,7 @@ pub async fn sync_single(
     media_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS type, upload, public, visibility, restricted_to_group FROM media WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS type, (upload ?? 0) AS upload, (public ?? false) AS public, (visibility ?? '') AS visibility, restricted_to_group FROM media WHERE id = $id")
         .bind(("id", RecordId::new("media", media_id)))
         .await?;
 
@@ -143,7 +143,7 @@ pub async fn full_sync_lists(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, (SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count AS item_count, created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (visibility ?? '') AS visibility, restricted_to_group, ((SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count ?? 0) AS item_count, (created ?? 0) AS created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -177,7 +177,7 @@ pub async fn sync_single_list(
     list_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, visibility, restricted_to_group, (SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count AS item_count, created FROM lists WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (visibility ?? '') AS visibility, restricted_to_group, ((SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count ?? 0) AS item_count, (created ?? 0) AS created FROM lists WHERE id = $id")
         .bind(("id", RecordId::new("lists", list_id)))
         .await?;
 
@@ -252,7 +252,7 @@ pub async fn full_sync_users(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS login, name, profile_picture FROM users ORDER BY id ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture FROM users ORDER BY id ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -286,7 +286,7 @@ pub async fn sync_single_user(
     login: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS login, name, profile_picture FROM users WHERE id = $id")
+        .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture FROM users WHERE id = $id")
         .bind(("id", RecordId::new("users", login)))
         .await?;
 
