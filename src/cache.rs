@@ -66,7 +66,7 @@ async fn refresh_cache(
     current_sprite: &mut Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut resp = db
-        .query("SELECT meta::id(id) AS id, name, owner, views, type, visibility, likes_count AS likes, dislikes_count AS dislikes FROM media ORDER BY likes_count DESC")
+        .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (type ?? '') AS type, (visibility ?? '') AS visibility, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes FROM media ORDER BY likes_count DESC")
         .await?;
 
     let all_media: Vec<MediaCacheData> = resp.take(0)?;
