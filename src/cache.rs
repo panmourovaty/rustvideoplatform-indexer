@@ -14,14 +14,21 @@ type RedisConn = redis::aio::ConnectionManager;
 /// Media data used for building both reaction counts and trending cache.
 #[derive(Deserialize, SurrealValue)]
 struct MediaCacheData {
+    #[serde(default)]
     id: String,
+    #[serde(default)]
     name: String,
+    #[serde(default)]
     owner: String,
+    #[serde(default)]
     views: i64,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     r#type: String,
+    #[serde(default)]
     visibility: String,
+    #[serde(default)]
     likes: i64,
+    #[serde(default)]
     dislikes: i64,
 }
 
