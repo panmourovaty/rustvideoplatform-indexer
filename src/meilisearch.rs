@@ -2,7 +2,6 @@ use log::{error, info};
 use meilisearch_sdk::client::Client;
 use serde::{de::DeserializeOwned, Serialize};
 
-#[derive(Clone)]
 pub struct MeiliIndex {
     client: Client,
     index_name: String,
@@ -41,7 +40,7 @@ impl MeiliIndex {
         let task = index
             .set_filterable_attributes([
                 "public",
-                "medium_type",
+                "type",
                 "upload",
                 "views",
                 "likes",

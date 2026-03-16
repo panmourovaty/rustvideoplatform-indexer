@@ -1,32 +1,25 @@
-use futures::StreamExt;
 use log::{error, info, warn};
-use serde::Deserialize;
-use surrealdb::engine::remote::ws::Client as WsClient;
-use surrealdb::types::{Action, RecordId, SurrealValue};
-use surrealdb::{Notification, Surreal};
+use sqlx::postgres::PgListener;
+use sqlx::PgPool;
 
 use crate::meilisearch::MeiliIndex;
+use crate::model::ChangeEvent;
 use crate::sync;
 
-type Db = Surreal<WsClient>;
-
-/// Generic record with just an id field, used to extract the ID from delete notifications.
-#[derive(Debug, Deserialize, SurrealValue)]
-struct IdRecord {
-    id: RecordId,
-}
-
-/// Listen for SurrealDB live query events and dispatch to the appropriate handler.
+/// Listen for PostgreSQL NOTIFY events and dispatch to the appropriate handler.
+///
 /// `entity` is a human-readable label ("media", "list", "user") used in log messages.
+/// `handler` is called with (pool, meili, operation, id) for each event.
 pub async fn listen_for_changes(
-    db: Db,
-    meili: MeiliIndex,
-    entity: &'static str,
+    pool: &PgPool,
+    meili: &MeiliIndex,
+    channel: &str,
+    entity: &str,
 ) {
-    info!("Setting up SurrealDB live query for {entity}...");
+    info!("Setting up PostgreSQL LISTEN on channel '{channel}' for {entity}...");
 
     loop {
-        match run_listener(&db, &meili, entity).await {
+        match run_listener(pool, meili, channel, entity).await {
             Ok(()) => {
                 info!("{entity} listener loop ended, restarting...");
             }
@@ -40,78 +33,37 @@ pub async fn listen_for_changes(
 }
 
 async fn run_listener(
-    db: &Db,
+    pool: &PgPool,
     meili: &MeiliIndex,
+    channel: &str,
     entity: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let table = match entity {
-        "media" => "media",
-        "list" => "lists",
-        "user" => "users",
-        _ => return Err(format!("Unknown entity: {entity}").into()),
-    };
+    let mut listener = PgListener::connect_with(pool).await?;
+    listener.listen(channel).await?;
+    info!("Listening for {entity} notifications on '{channel}'");
 
-    info!("Starting live select on table '{table}' for {entity}");
+    loop {
+        let notification = listener.recv().await?;
+        let payload = notification.payload();
 
-    let mut stream = db.select(table).live().await?;
-
-    info!("Listening for {entity} changes via live query on '{table}'");
-
-    while let Some(event) = stream.next().await {
-        let notification: Notification<serde_json::Value> = match event {
-            Ok(n) => n,
+        let event: ChangeEvent = match serde_json::from_str(payload) {
+            Ok(e) => e,
             Err(e) => {
-                error!("{entity} live query stream error: {e}");
-                return Err(e.into());
-            }
-        };
-
-        // Extract the record ID key string
-        let record_id_str: Option<String> = notification
-            .data
-            .get("id")
-            .and_then(|v| {
-                // SurrealDB SDK may serialize RecordId as {"tb":"table","id":"key"} or as string
-                if let Some(obj) = v.as_object() {
-                    obj.get("id").and_then(|k| k.as_str()).map(|s| s.to_string())
-                } else {
-                    v.as_str().map(|s| {
-                        // Strip table prefix if present (e.g. "media:abc" -> "abc")
-                        if let Some(pos) = s.find(':') {
-                            s[pos + 1..].to_string()
-                        } else {
-                            s.to_string()
-                        }
-                    })
-                }
-            });
-
-        let record_id = match record_id_str {
-            Some(id) => id,
-            None => {
-                error!("{entity} live event missing id: {:?}", notification.data);
+                error!("Failed to parse {entity} NOTIFY payload '{payload}': {e}");
                 continue;
             }
         };
 
-        let operation = match notification.action {
-            Action::Create | Action::Update => "UPDATE",
-            Action::Delete => "DELETE",
-            _ => {
-                warn!("{entity} unknown action for '{record_id}', skipping");
-                continue;
-            }
-        };
-
-        info!("Received {operation} event for {entity} '{record_id}'");
+        info!(
+            "Received {} event for {entity} '{}'",
+            event.operation, event.id
+        );
 
         match entity {
-            "media" => sync::handle_change(db, meili, operation, &record_id).await,
-            "list" => sync::handle_list_change(db, meili, operation, &record_id).await,
-            "user" => sync::handle_user_change(db, meili, operation, &record_id).await,
+            "media" => sync::handle_change(pool, meili, &event.operation, &event.id).await,
+            "list" => sync::handle_list_change(pool, meili, &event.operation, &event.id).await,
+            "user" => sync::handle_user_change(pool, meili, &event.operation, &event.id).await,
             _ => error!("Unknown entity type: {entity}"),
         }
     }
-
-    Ok(())
 }
