@@ -38,7 +38,7 @@ pub async fn full_sync(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS medium_type, (upload ?? 0) AS upload, (public ?? false) AS public, (visibility ?? '') AS visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (views ?? 0) AS views, (likes_count ?? 0) AS likes, (dislikes_count ?? 0) AS dislikes, (type ?? '') AS medium_type, upload, (public ?? false) AS public, (visibility ?? '') AS visibility, restricted_to_group FROM media ORDER BY upload ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -143,7 +143,7 @@ pub async fn full_sync_lists(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (visibility ?? '') AS visibility, restricted_to_group, ((SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count ?? 0) AS item_count, (created ?? 0) AS created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS id, (name ?? '') AS name, (owner ?? '') AS owner, (visibility ?? '') AS visibility, restricted_to_group, ((SELECT count() FROM list_items WHERE list_id = $parent.id GROUP ALL)[0].count ?? 0) AS item_count, created FROM lists WHERE visibility != 'hidden' ORDER BY created ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
@@ -252,7 +252,7 @@ pub async fn full_sync_users(
 
     loop {
         let mut resp = db
-            .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture FROM users ORDER BY login ASC LIMIT $batch START $offset")
+            .query("SELECT meta::id(id) AS login, (name ?? '') AS name, profile_picture, id FROM users ORDER BY id ASC LIMIT $batch START $offset")
             .bind(("batch", batch_size as i64))
             .bind(("offset", offset))
             .await?;
