@@ -3,6 +3,7 @@ mod config;
 mod listener;
 mod meilisearch;
 mod model;
+mod sitemap;
 mod sprite;
 mod sync;
 
@@ -99,26 +100,62 @@ async fn main() {
         .expect("Failed to connect to Redis");
     info!("Connected to Redis");
 
+    // Generate the initial sitemap now that all data is synced
+    info!("Generating initial sitemap...");
+    let mut redis_init = redis_conn.clone();
+    if let Err(e) = sitemap::generate_and_store(&pool, &mut redis_init, &config.site_url).await {
+        error!("Failed to generate initial sitemap: {e}");
+    }
+
     info!("Starting change listeners and cache refresh...");
     info!("Send SIGTERM or SIGINT (Ctrl+C) to stop");
 
     // Spawn listener tasks for each entity type
     let media_pool = pool.clone();
     let media_channel = config.notify_channel.clone();
+    let media_site_url = config.site_url.clone();
+    let media_redis = redis_conn.clone();
     let media_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&media_pool, &media_meili, &media_channel, "media").await;
+        listener::listen_for_changes(
+            &media_pool,
+            &media_meili,
+            media_redis,
+            &media_channel,
+            "media",
+            &media_site_url,
+        )
+        .await;
     });
 
     let list_pool = pool.clone();
     let list_channel = config.list_notify_channel.clone();
+    let list_site_url = config.site_url.clone();
+    let list_redis = redis_conn.clone();
     let list_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&list_pool, &lists_meili, &list_channel, "list").await;
+        listener::listen_for_changes(
+            &list_pool,
+            &lists_meili,
+            list_redis,
+            &list_channel,
+            "list",
+            &list_site_url,
+        )
+        .await;
     });
 
     let user_pool = pool.clone();
     let user_channel = config.user_notify_channel.clone();
+    let user_redis = redis_conn.clone();
     let user_handle = tokio::spawn(async move {
-        listener::listen_for_changes(&user_pool, &users_meili, &user_channel, "user").await;
+        listener::listen_for_changes(
+            &user_pool,
+            &users_meili,
+            user_redis,
+            &user_channel,
+            "user",
+            "",
+        )
+        .await;
     });
 
     // Periodic cache refresh task
@@ -126,9 +163,17 @@ async fn main() {
     let source_dir = config.source_dir.clone();
     let sprite_items = config.sprite_items;
     let cache_interval = config.cache_interval_secs;
+    let cache_site_url = config.site_url.clone();
     let cache_handle = tokio::spawn(async move {
-        cache::run_periodic_cache(cache_pool, redis_conn, cache_interval, source_dir, sprite_items)
-            .await;
+        cache::run_periodic_cache(
+            cache_pool,
+            redis_conn,
+            cache_interval,
+            source_dir,
+            sprite_items,
+            cache_site_url,
+        )
+        .await;
     });
 
     // Wait for shutdown signal (SIGINT or SIGTERM) or unexpected task exit

@@ -3,6 +3,9 @@ use sqlx::PgPool;
 
 use crate::meilisearch::MeiliIndex;
 use crate::model::{MeiliList, MeiliMedia, MeiliUser};
+use crate::sitemap;
+
+type RedisConn = redis::aio::ConnectionManager;
 
 // --- Media ---
 
@@ -100,9 +103,12 @@ pub async fn sync_single(
 }
 
 /// Handle a media change event received via LISTEN/NOTIFY.
+/// Regenerates the sitemap after any media change.
 pub async fn handle_change(
     pool: &PgPool,
     meili: &MeiliIndex,
+    redis: &mut RedisConn,
+    base_url: &str,
     operation: &str,
     media_id: &str,
 ) {
@@ -117,6 +123,10 @@ pub async fn handle_change(
 
     if let Err(e) = result {
         error!("Failed to handle {operation} for '{media_id}': {e}");
+    }
+
+    if let Err(e) = sitemap::generate_and_store(pool, redis, base_url).await {
+        error!("Failed to regenerate sitemap after media change: {e}");
     }
 }
 
@@ -215,9 +225,12 @@ pub async fn sync_single_list(
 }
 
 /// Handle a list change event received via LISTEN/NOTIFY.
+/// Regenerates the sitemap after any list change.
 pub async fn handle_list_change(
     pool: &PgPool,
     meili: &MeiliIndex,
+    redis: &mut RedisConn,
+    base_url: &str,
     operation: &str,
     list_id: &str,
 ) {
@@ -232,6 +245,10 @@ pub async fn handle_list_change(
 
     if let Err(e) = result {
         error!("Failed to handle {operation} for list '{list_id}': {e}");
+    }
+
+    if let Err(e) = sitemap::generate_and_store(pool, redis, base_url).await {
+        error!("Failed to regenerate sitemap after list change: {e}");
     }
 }
 

@@ -3,6 +3,7 @@ use redis::AsyncCommands;
 use sqlx::PgPool;
 use std::time::Duration;
 
+use crate::sitemap;
 use crate::sprite;
 
 type RedisConn = redis::aio::ConnectionManager;
@@ -21,7 +22,7 @@ struct MediaCacheData {
     dislikes: i64,
 }
 
-/// Periodically refresh the Redis cache with trending metrics and reaction counts.
+/// Periodically refresh the Redis cache with trending metrics, reaction counts, and sitemap.
 /// Runs forever, sleeping `interval_secs` between each refresh cycle.
 pub async fn run_periodic_cache(
     pool: PgPool,
@@ -29,6 +30,7 @@ pub async fn run_periodic_cache(
     interval_secs: u64,
     source_dir: String,
     sprite_items: usize,
+    site_url: String,
 ) {
     info!("Starting periodic cache refresh (interval: {interval_secs}s)");
     let mut redis = redis;
@@ -44,6 +46,7 @@ pub async fn run_periodic_cache(
             sprite_items,
             &mut last_trending_ids,
             &mut current_sprite,
+            &site_url,
         )
         .await
         {
@@ -56,7 +59,7 @@ pub async fn run_periodic_cache(
 
 /// Single cache refresh cycle: fetch all media with reaction counts from DB,
 /// then update Redis with reaction counts and trending sorted set.
-/// Also regenerates the trending sprite if the top items have changed.
+/// Also regenerates the trending sprite if the top items have changed, and refreshes the sitemap.
 async fn refresh_cache(
     pool: &PgPool,
     redis: &mut RedisConn,
@@ -64,6 +67,7 @@ async fn refresh_cache(
     sprite_items: usize,
     last_trending_ids: &mut Vec<String>,
     current_sprite: &mut Option<String>,
+    site_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Single query: join media with aggregated reaction counts
     let all_media: Vec<MediaCacheData> = sqlx::query_as(
@@ -204,6 +208,10 @@ async fn refresh_cache(
         *last_trending_ids = top_ids;
     } else {
         info!("Trending list unchanged, skipping sprite regeneration");
+    }
+
+    if let Err(e) = sitemap::generate_and_store(pool, redis, site_url).await {
+        error!("Failed to regenerate sitemap during cache refresh: {e}");
     }
 
     Ok(())
