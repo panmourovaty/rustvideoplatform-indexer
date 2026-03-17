@@ -5,5 +5,6 @@
     "batch_size": 1000,
     "notify_channel": "media_changes",
     "redis_url": "redis://dragonfly:6379",
-    "cache_interval_secs": 60
+    "cache_interval_secs": 60,
+    "site_url": "https://example.com"
 }

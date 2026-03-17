@@ -29,6 +29,8 @@ pub struct Config {
     /// Number of top trending items to include in the sprite (default: 30)
     #[serde(default = "default_sprite_items")]
     pub sprite_items: usize,
+    /// Canonical base URL of the site used when building sitemap URLs (e.g. "https://example.com")
+    pub site_url: String,
 }
 
 fn default_batch_size() -> usize {
@@ -94,6 +96,8 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_sprite_items),
+            site_url: env::var("SITE_URL")
+                .expect("SITE_URL must be set (or provide config.json)"),
         }
     }
 }
