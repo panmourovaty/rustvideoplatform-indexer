@@ -23,7 +23,7 @@ impl MeiliIndex {
     }
 
     /// Configure the "media" index with its specific settings.
-    pub async fn setup_media_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn setup_media_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
         let task = self
@@ -76,7 +76,7 @@ impl MeiliIndex {
     }
 
     /// Configure the "lists" index.
-    pub async fn setup_lists_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn setup_lists_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
         let task = self
@@ -120,7 +120,7 @@ impl MeiliIndex {
     }
 
     /// Configure the "users" index.
-    pub async fn setup_users_index(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn setup_users_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
         let task = self
@@ -159,7 +159,7 @@ impl MeiliIndex {
     pub async fn add_documents<T: Serialize + DeserializeOwned + Send + Sync>(
         &self,
         documents: &[T],
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if documents.is_empty() {
             return Ok(());
         }
@@ -175,7 +175,7 @@ impl MeiliIndex {
     pub async fn upsert_document<T: Serialize + DeserializeOwned + Send + Sync>(
         &self,
         document: &T,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let index = self.client.index(&self.index_name);
         let task = index
             .add_documents(std::slice::from_ref(document), Some(self.primary_key.as_str()))
@@ -185,7 +185,7 @@ impl MeiliIndex {
     }
 
     /// Delete a document by its primary key value.
-    pub async fn delete_document(&self, id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_document(&self, id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let index = self.client.index(&self.index_name);
         match index.delete_document(id).await {
             Ok(task) => {
