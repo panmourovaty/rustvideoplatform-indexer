@@ -44,7 +44,7 @@ async fn run_listener(
     channel: &str,
     entity: &str,
     base_url: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut listener = PgListener::connect_with(pool).await?;
     listener.listen(channel).await?;
     info!("Listening for {entity} notifications on '{channel}'");

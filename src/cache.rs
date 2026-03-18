@@ -68,7 +68,7 @@ async fn refresh_cache(
     last_trending_ids: &mut Vec<String>,
     current_sprite: &mut Option<String>,
     site_url: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Single query: join media with aggregated reaction counts
     let all_media: Vec<MediaCacheData> = sqlx::query_as(
         "SELECT m.id, m.name, m.owner, m.views, m.type, m.visibility, \

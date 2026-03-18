@@ -14,7 +14,7 @@ pub async fn full_sync(
     pool: &PgPool,
     meili: &MeiliIndex,
     batch_size: usize,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full sync from PostgreSQL to Meilisearch...");
 
     let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM media")
@@ -73,7 +73,7 @@ pub async fn sync_single(
     pool: &PgPool,
     meili: &MeiliIndex,
     media_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let row: Option<MeiliMedia> = sqlx::query_as(
         "SELECT m.id, m.name, m.owner, m.views, \
          COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
@@ -137,7 +137,7 @@ pub async fn full_sync_lists(
     pool: &PgPool,
     meili: &MeiliIndex,
     batch_size: usize,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full list sync from PostgreSQL to Meilisearch...");
 
     let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM lists WHERE visibility != 'hidden'")
@@ -194,7 +194,7 @@ pub async fn sync_single_list(
     pool: &PgPool,
     meili: &MeiliIndex,
     list_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let row: Option<MeiliList> = sqlx::query_as(
         "SELECT l.id, l.name, l.owner, l.visibility, l.restricted_to_group, \
          COALESCE((SELECT COUNT(*) FROM list_items li WHERE li.list_id = l.id), 0)::bigint AS item_count, \
@@ -259,7 +259,7 @@ pub async fn full_sync_users(
     pool: &PgPool,
     meili: &MeiliIndex,
     batch_size: usize,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full user sync from PostgreSQL to Meilisearch...");
 
     let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
@@ -311,7 +311,7 @@ pub async fn sync_single_user(
     pool: &PgPool,
     meili: &MeiliIndex,
     login: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let row: Option<MeiliUser> = sqlx::query_as(
         "SELECT login, name, profile_picture FROM users WHERE login = $1",
     )
