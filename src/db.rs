@@ -1,5 +1,5 @@
-use scylla::prepared_statement::PreparedStatement;
-use scylla::Session;
+use scylla::statement::prepared::PreparedStatement;
+use scylla::client::session::Session;
 use std::sync::Arc;
 
 pub struct ScyllaDb {
@@ -17,7 +17,7 @@ impl ScyllaDb {
         nodes: &[String],
         keyspace: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let session = scylla::SessionBuilder::new()
+        let session = scylla::client::session_builder::SessionBuilder::new()
             .known_nodes(nodes)
             .use_keyspace(keyspace, false)
             .build()
