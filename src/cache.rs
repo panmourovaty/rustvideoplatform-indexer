@@ -1,21 +1,19 @@
 use log::{error, info};
 use redis::AsyncCommands;
-use sqlx::PgPool;
 use std::time::Duration;
 
+use crate::db::ScyllaDb;
 use crate::sitemap;
 use crate::sprite;
 
 type RedisConn = redis::aio::ConnectionManager;
 
 /// Media data used for building both reaction counts and trending cache.
-#[derive(sqlx::FromRow)]
 struct MediaCacheData {
     id: String,
     name: String,
     owner: String,
     views: i64,
-    #[sqlx(rename = "type")]
     r#type: String,
     visibility: String,
     likes: i64,
@@ -25,7 +23,7 @@ struct MediaCacheData {
 /// Periodically refresh the Redis cache with trending metrics, reaction counts, and sitemap.
 /// Runs forever, sleeping `interval_secs` between each refresh cycle.
 pub async fn run_periodic_cache(
-    pool: PgPool,
+    db: &ScyllaDb,
     redis: RedisConn,
     interval_secs: u64,
     source_dir: String,
@@ -40,7 +38,7 @@ pub async fn run_periodic_cache(
 
     loop {
         match refresh_cache(
-            &pool,
+            db,
             &mut redis,
             &source_dir,
             sprite_items,
@@ -61,7 +59,7 @@ pub async fn run_periodic_cache(
 /// then update Redis with reaction counts and trending sorted set.
 /// Also regenerates the trending sprite if the top items have changed, and refreshes the sitemap.
 async fn refresh_cache(
-    pool: &PgPool,
+    db: &ScyllaDb,
     redis: &mut RedisConn,
     source_dir: &str,
     sprite_items: usize,
@@ -69,18 +67,67 @@ async fn refresh_cache(
     current_sprite: &mut Option<String>,
     site_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Single query: join media with aggregated reaction counts
-    let all_media: Vec<MediaCacheData> = sqlx::query_as(
-        "SELECT m.id, m.name, m.owner, m.views, m.type, m.visibility, \
-         COUNT(*) FILTER (WHERE ml.reaction = 'like') AS likes, \
-         COUNT(*) FILTER (WHERE ml.reaction = 'dislike') AS dislikes \
-         FROM media m \
-         LEFT JOIN media_likes ml ON m.id = ml.media_id \
-         GROUP BY m.id, m.name, m.owner, m.views, m.type, m.visibility \
-         ORDER BY likes DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+    // Fetch all media
+    let result = db
+        .session
+        .query_unpaged(
+            "SELECT id, name, owner, views, type, visibility FROM media",
+            &[],
+        )
+        .await?;
+
+    let rows_result = result.into_rows_result()?;
+    let media_rows: Vec<(String, String, String, i64, String, String)> = rows_result
+        .rows::<(String, String, String, i64, String, String)>()?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // For each media item, fetch reactions
+    let mut all_media: Vec<MediaCacheData> = Vec::with_capacity(media_rows.len());
+    for (id, name, owner, views, media_type, visibility) in media_rows {
+        let (likes, dislikes) = match db
+            .session
+            .execute_unpaged(&db.get_reactions_for_media, (&id,))
+            .await
+        {
+            Ok(reaction_result) => {
+                match reaction_result.into_rows_result() {
+                    Ok(reaction_rows) => {
+                        let mut likes: i64 = 0;
+                        let mut dislikes: i64 = 0;
+                        if let Ok(iter) = reaction_rows.rows::<(String, String)>() {
+                            for row in iter {
+                                if let Ok((_user, reaction)) = row {
+                                    match reaction.as_str() {
+                                        "like" => likes += 1,
+                                        "dislike" => dislikes += 1,
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        (likes, dislikes)
+                    }
+                    Err(_) => (0, 0),
+                }
+            }
+            Err(_) => (0, 0),
+        };
+
+        all_media.push(MediaCacheData {
+            id,
+            name,
+            owner,
+            views,
+            r#type: media_type,
+            visibility,
+            likes,
+            dislikes,
+        });
+    }
+
+    // Sort by likes descending to match original behavior
+    all_media.sort_by(|a, b| b.likes.cmp(&a.likes));
 
     if all_media.is_empty() {
         let _: Result<(), _> = redis.del("cache:trending").await;
@@ -210,7 +257,7 @@ async fn refresh_cache(
         info!("Trending list unchanged, skipping sprite regeneration");
     }
 
-    if let Err(e) = sitemap::generate_and_store(pool, redis, site_url).await {
+    if let Err(e) = sitemap::generate_and_store(db, redis, site_url).await {
         error!("Failed to regenerate sitemap during cache refresh: {e}");
     }
 

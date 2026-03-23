@@ -1,82 +1,38 @@
-use log::{error, info, warn};
-use sqlx::postgres::PgListener;
-use sqlx::PgPool;
+use log::info;
 
+use crate::db::ScyllaDb;
 use crate::meilisearch::MeiliIndex;
-use crate::model::ChangeEvent;
 use crate::sync;
 
-type RedisConn = redis::aio::ConnectionManager;
-
-/// Listen for PostgreSQL NOTIFY events and dispatch to the appropriate handler.
-///
-/// `entity` is a human-readable label ("media", "list", "user") used in log messages.
-/// `handler` is called with (pool, meili, redis, base_url, operation, id) for each event.
-pub async fn listen_for_changes(
-    pool: &PgPool,
+/// Periodically re-sync all documents from ScyllaDB to Meilisearch.
+/// Since ScyllaDB doesn't support LISTEN/NOTIFY, we poll on a fixed interval.
+pub async fn poll_for_changes(
+    db: &ScyllaDb,
     meili: &MeiliIndex,
-    redis: RedisConn,
-    channel: &str,
     entity: &str,
-    base_url: &str,
+    interval_secs: u64,
 ) {
-    info!("Setting up PostgreSQL LISTEN on channel '{channel}' for {entity}...");
-
-    let mut redis = redis;
+    info!("Starting polling-based sync for {entity} (interval: {interval_secs}s)");
     loop {
-        match run_listener(pool, meili, &mut redis, channel, entity, base_url).await {
-            Ok(()) => {
-                info!("{entity} listener loop ended, restarting...");
-            }
-            Err(e) => {
-                error!("{entity} listener error: {e}");
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        warn!("Reconnecting {entity} listener...");
-    }
-}
-
-async fn run_listener(
-    pool: &PgPool,
-    meili: &MeiliIndex,
-    redis: &mut RedisConn,
-    channel: &str,
-    entity: &str,
-    base_url: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut listener = PgListener::connect_with(pool).await?;
-    listener.listen(channel).await?;
-    info!("Listening for {entity} notifications on '{channel}'");
-
-    loop {
-        let notification = listener.recv().await?;
-        let payload = notification.payload();
-
-        let event: ChangeEvent = match serde_json::from_str(payload) {
-            Ok(e) => e,
-            Err(e) => {
-                error!("Failed to parse {entity} NOTIFY payload '{payload}': {e}");
-                continue;
-            }
-        };
-
-        info!(
-            "Received {} event for {entity} '{}'",
-            event.operation, event.id
-        );
-
+        tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
+        info!("Running periodic {entity} sync...");
         match entity {
             "media" => {
-                sync::handle_change(pool, meili, redis, base_url, &event.operation, &event.id)
-                    .await
+                if let Err(e) = sync::full_sync(db, meili, 1000).await {
+                    log::error!("Media periodic sync failed: {e}");
+                }
             }
             "list" => {
-                sync::handle_list_change(pool, meili, redis, base_url, &event.operation, &event.id)
-                    .await
+                if let Err(e) = sync::full_sync_lists(db, meili, 1000).await {
+                    log::error!("List periodic sync failed: {e}");
+                }
             }
-            "user" => sync::handle_user_change(pool, meili, &event.operation, &event.id).await,
-            _ => error!("Unknown entity type: {entity}"),
+            "user" => {
+                if let Err(e) = sync::full_sync_users(db, meili, 1000).await {
+                    log::error!("User periodic sync failed: {e}");
+                }
+            }
+            _ => {}
         }
     }
 }

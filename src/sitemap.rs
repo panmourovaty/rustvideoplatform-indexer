@@ -1,6 +1,7 @@
 use log::info;
 use redis::AsyncCommands;
-use sqlx::PgPool;
+
+use crate::db::ScyllaDb;
 
 type RedisConn = redis::aio::ConnectionManager;
 
@@ -14,9 +15,9 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
-/// Generate the sitemap XML from PostgreSQL and store it in Redis under `cache:sitemap`.
+/// Generate the sitemap XML from ScyllaDB and store it in Redis under `cache:sitemap`.
 pub async fn generate_and_store(
-    pool: &PgPool,
+    db: &ScyllaDb,
     redis: &mut RedisConn,
     base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -36,9 +37,18 @@ pub async fn generate_and_store(
         base_url
     ));
 
-    let users: Vec<String> = sqlx::query_scalar("SELECT login FROM users ORDER BY login")
-        .fetch_all(pool)
+    // Fetch all users
+    let user_result = db
+        .session
+        .query_unpaged("SELECT login FROM users", &[])
         .await?;
+    let user_rows = user_result.into_rows_result()?;
+    let mut users: Vec<String> = user_rows
+        .rows::<(String,)>()?
+        .filter_map(|r| r.ok())
+        .map(|(login,)| login)
+        .collect();
+    users.sort();
 
     for login in &users {
         xml.push_str(&format!(
@@ -48,11 +58,19 @@ pub async fn generate_and_store(
         ));
     }
 
-    let media_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT id FROM media WHERE visibility = 'public' ORDER BY upload DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+    // Fetch all media, filter public ones at application level
+    let media_result = db
+        .session
+        .query_unpaged("SELECT id, visibility FROM media", &[])
+        .await?;
+    let media_rows = media_result.into_rows_result()?;
+    let mut media_ids: Vec<String> = media_rows
+        .rows::<(String, String)>()?
+        .filter_map(|r| r.ok())
+        .filter(|(_id, visibility)| visibility == "public")
+        .map(|(id, _)| id)
+        .collect();
+    media_ids.sort();
 
     for id in &media_ids {
         xml.push_str(&format!(
@@ -62,11 +80,19 @@ pub async fn generate_and_store(
         ));
     }
 
-    let list_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT id FROM lists WHERE visibility = 'public' ORDER BY created DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+    // Fetch all lists, filter public ones at application level
+    let list_result = db
+        .session
+        .query_unpaged("SELECT id, visibility FROM lists", &[])
+        .await?;
+    let list_rows = list_result.into_rows_result()?;
+    let mut list_ids: Vec<String> = list_rows
+        .rows::<(String, String)>()?
+        .filter_map(|r| r.ok())
+        .filter(|(_id, visibility)| visibility == "public")
+        .map(|(id, _)| id)
+        .collect();
+    list_ids.sort();
 
     for id in &list_ids {
         xml.push_str(&format!(

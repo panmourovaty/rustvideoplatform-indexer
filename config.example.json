@@ -1,10 +1,11 @@
 {
-    "database_url": "postgresql://vids:YOURPASSWORD@postgres:5432/vids",
+    "scylla_nodes": ["scylladb:9042"],
+    "scylla_keyspace": "videoplatform",
     "meilisearch_url": "http://meilisearch:7700",
     "meilisearch_key": null,
     "batch_size": 1000,
-    "notify_channel": "media_changes",
     "redis_url": "redis://dragonfly:6379",
     "cache_interval_secs": 60,
+    "poll_interval_secs": 30,
     "site_url": "https://example.com"
 }
