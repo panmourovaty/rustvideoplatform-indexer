@@ -14,6 +14,7 @@ pub struct MeilisearchEmbedderConfig {
     pub revision: Option<String>,
     pub pooling: Option<String>,
     pub document_template: Option<String>,
+    #[serde(default = "default_document_template_max_bytes")]
     pub document_template_max_bytes: Option<usize>,
     pub dimensions: Option<usize>,
     pub request: Option<serde_json::Value>,
@@ -67,7 +68,7 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         revision: None,
         pooling: None,
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
-        document_template_max_bytes: Some(1500),
+        document_template_max_bytes: Some(800),
         dimensions: Some(768),
         request: Some(serde_json::json!({
             "model": "embedding",
@@ -79,6 +80,10 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         headers: None,
         binary_quantized: None,
     }
+}
+
+fn default_document_template_max_bytes() -> Option<usize> {
+    Some(800)
 }
 
 fn default_meilisearch_embedder_name() -> String {
@@ -144,7 +149,8 @@ impl Config {
                     .or_else(|| default_meilisearch_embedder().document_template),
                 document_template_max_bytes: env::var("MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE_MAX_BYTES")
                     .ok()
-                    .and_then(|v| v.parse().ok()),
+                    .and_then(|v| v.parse().ok())
+                    .or_else(|| default_meilisearch_embedder().document_template_max_bytes),
                 dimensions: env::var("MEILISEARCH_EMBEDDER_DIMENSIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())
