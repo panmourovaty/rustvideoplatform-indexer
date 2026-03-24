@@ -1,5 +1,7 @@
 use log::{error, info};
 use meilisearch_sdk::client::Client;
+use meilisearch_sdk::errors::ErrorCode;
+use meilisearch_sdk::tasks::Task;
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -31,6 +33,31 @@ impl MeiliIndex {
         &self.index_name
     }
 
+    /// Ensure the index exists, creating it if necessary.
+    async fn ensure_index_exists(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let task = self
+            .client
+            .create_index(&self.index_name, Some(&self.primary_key))
+            .await?;
+        let task = task
+            .wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300)))
+            .await?;
+        match task {
+            Task::Failed { content } if content.error.error_code == ErrorCode::IndexAlreadyExists => {
+                info!("Meilisearch index '{}' already exists", self.index_name);
+                Ok(())
+            }
+            Task::Failed { content } => {
+                Err(format!(
+                    "Failed to create index '{}': {}",
+                    self.index_name, content.error
+                )
+                .into())
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Configure the "media" index with its specific settings.
     pub async fn setup_media_index(
         &self,
@@ -38,13 +65,7 @@ impl MeiliIndex {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        if self.client.get_index(&self.index_name).await.is_err() {
-            let task = self
-                .client
-                .create_index(&self.index_name, Some(&self.primary_key))
-                .await?;
-            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
-        }
+        self.ensure_index_exists().await?;
 
         let index = self.client.index(&self.index_name);
 
@@ -97,13 +118,7 @@ impl MeiliIndex {
     pub async fn setup_lists_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        if self.client.get_index(&self.index_name).await.is_err() {
-            let task = self
-                .client
-                .create_index(&self.index_name, Some(&self.primary_key))
-                .await?;
-            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
-        }
+        self.ensure_index_exists().await?;
 
         let index = self.client.index(&self.index_name);
 
@@ -143,13 +158,7 @@ impl MeiliIndex {
     pub async fn setup_users_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        if self.client.get_index(&self.index_name).await.is_err() {
-            let task = self
-                .client
-                .create_index(&self.index_name, Some(&self.primary_key))
-                .await?;
-            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
-        }
+        self.ensure_index_exists().await?;
 
         let index = self.client.index(&self.index_name);
 
