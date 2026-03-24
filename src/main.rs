@@ -67,7 +67,7 @@ async fn main() {
         &db,
         &media_meili,
         config.batch_size,
-        &config.meilisearch_embedder,
+        &config.meilisearch_embedder.name,
     )
     .await
     {
@@ -116,7 +116,7 @@ async fn main() {
 
     // Spawn polling tasks for each entity type
     let media_db = Arc::clone(&db);
-    let media_embedder = config.meilisearch_embedder.clone();
+    let media_embedder = config.meilisearch_embedder.name.clone();
     let media_handle = tokio::spawn(async move {
         listener::poll_for_changes(
             &media_db,

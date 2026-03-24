@@ -13,11 +13,22 @@ Copy `config.example.json` to `config.json` and fill in the values:
 
 ```json
 {
-    "database_url": "postgresql://vids:password@localhost:5432/vids",
-    "meilisearch_url": "http://localhost:7700",
+    "scylla_nodes": ["scylladb:9042"],
+    "scylla_keyspace": "videoplatform",
+    "meilisearch_url": "http://meilisearch:7700",
     "meilisearch_key": null,
+    "meilisearch_embedder": {
+        "name": "default",
+        "source": "rest",
+        "url": "http://embedllama:8084",
+        "document_template": "{{doc.name}} {{doc.description}}",
+        "dimensions": 1024
+    },
     "batch_size": 1000,
-    "notify_channel": "media_changes"
+    "redis_url": "redis://dragonfly:6379",
+    "cache_interval_secs": 60,
+    "poll_interval_secs": 30,
+    "site_url": "https://example.com"
 }
 ```
 
@@ -25,11 +36,26 @@ You can also use environment variables instead of `config.json`:
 
 | Variable | Required | Default |
 |---|---|---|
-| `DATABASE_URL` | yes | — |
+| `SCYLLA_NODES` | yes | — |
+| `SCYLLA_KEYSPACE` | no | `videoplatform` |
 | `MEILISEARCH_URL` | no | `http://localhost:7700` |
 | `MEILISEARCH_KEY` | no | none |
+| `MEILISEARCH_EMBEDDER` | no | `default` |
+| `MEILISEARCH_EMBEDDER_SOURCE` | no | `rest` |
+| `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://embedllama:8084` |
+| `MEILISEARCH_EMBEDDER_API_KEY` | depends on source | none |
+| `MEILISEARCH_EMBEDDER_MODEL` | no | none |
+| `MEILISEARCH_EMBEDDER_REVISION` | no | none |
+| `MEILISEARCH_EMBEDDER_POOLING` | no | none |
+| `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE` | no | `{{doc.name}} {{doc.description}}` |
+| `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE_MAX_BYTES` | no | none |
+| `MEILISEARCH_EMBEDDER_DIMENSIONS` | no | `1024` |
+| `MEILISEARCH_EMBEDDER_BINARY_QUANTIZED` | no | none |
 | `BATCH_SIZE` | no | `1000` |
-| `NOTIFY_CHANNEL` | no | `media_changes` |
+| `REDIS_URL` | yes | — |
+| `CACHE_INTERVAL_SECS` | no | `60` |
+| `POLL_INTERVAL_SECS` | no | `30` |
+| `SITE_URL` | yes | — |
 
 ## Building
 

@@ -7,6 +7,8 @@ use meilisearch_sdk::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::config::MeilisearchEmbedderConfig;
+
 pub struct MeiliIndex {
     client: Client,
     index_name: String,
@@ -28,7 +30,10 @@ impl MeiliIndex {
     }
 
     /// Configure the "media" index with its specific settings.
-    pub async fn setup_media_index(&self, embedder_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn setup_media_index(
+        &self,
+        embedder_config: &MeilisearchEmbedderConfig,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
         let task = self
@@ -76,10 +81,25 @@ impl MeiliIndex {
         task.wait_for_completion(&self.client, None, None).await?;
 
         let embedders = HashMap::from([(
-            embedder_name.to_string(),
+            embedder_config.name.clone(),
             Embedder {
-                source: EmbedderSource::UserProvided,
-                document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
+                source: match embedder_config.source.as_str() {
+                    "huggingFace" => EmbedderSource::HuggingFace,
+                    "openAi" => EmbedderSource::OpenAi,
+                    "ollama" => EmbedderSource::Ollama,
+                    "rest" => EmbedderSource::Rest,
+                    "composite" => EmbedderSource::Composite,
+                    _ => EmbedderSource::UserProvided,
+                },
+                url: embedder_config.url.clone(),
+                api_key: embedder_config.api_key.clone(),
+                model: embedder_config.model.clone(),
+                revision: embedder_config.revision.clone(),
+                pooling: embedder_config.pooling.clone(),
+                document_template: embedder_config.document_template.clone(),
+                document_template_max_bytes: embedder_config.document_template_max_bytes,
+                dimensions: embedder_config.dimensions,
+                binary_quantized: embedder_config.binary_quantized,
                 ..Embedder::default()
             },
         )]);
