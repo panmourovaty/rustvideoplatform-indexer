@@ -1,11 +1,18 @@
 use log::{error, info};
 use meilisearch_sdk::client::Client;
 use serde::{de::DeserializeOwned, Serialize};
+use std::collections::HashMap;
 
 pub struct MeiliIndex {
     client: Client,
     index_name: String,
     primary_key: String,
+    /// llama.cpp embeddings endpoint URL, set via `with_embedder`.
+    llama_cpp_url: Option<String>,
+    /// Meilisearch embedder name to configure (default: "default").
+    embedder_name: String,
+    /// Number of embedding vector dimensions.
+    embedding_dimensions: Option<usize>,
 }
 
 impl MeiliIndex {
@@ -15,7 +22,18 @@ impl MeiliIndex {
             client,
             index_name: index_name.to_owned(),
             primary_key: primary_key.to_owned(),
+            llama_cpp_url: None,
+            embedder_name: "default".to_string(),
+            embedding_dimensions: None,
         }
+    }
+
+    /// Configure a llama.cpp REST embedder to be set up when `setup_media_index` is called.
+    pub fn with_embedder(mut self, url: &str, name: &str, dimensions: Option<usize>) -> Self {
+        self.llama_cpp_url = Some(url.to_string());
+        self.embedder_name = name.to_string();
+        self.embedding_dimensions = dimensions;
+        self
     }
 
     pub fn index_name(&self) -> &str {
@@ -67,6 +85,37 @@ impl MeiliIndex {
             ])
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
+
+        // Configure the llama.cpp REST embedder so Meilisearch can embed each
+        // document automatically and power SimilarQuery in the main platform.
+        if let Some(ref llama_url) = self.llama_cpp_url {
+            info!(
+                "Configuring Meilisearch embedder '{}' pointing to llama.cpp at {}...",
+                self.embedder_name, llama_url
+            );
+
+            let mut embedder_config = serde_json::json!({
+                "source": "rest",
+                "url": llama_url,
+                // llama.cpp exposes an OpenAI-compatible /v1/embeddings endpoint.
+                "request": {"input": "{{text}}"},
+                "response": {"data": [{"embedding": "{{embedding}}"}]},
+                // Embed the media title for each document.
+                "documentTemplate": "{{doc.name}}"
+            });
+
+            if let Some(dims) = self.embedding_dimensions {
+                embedder_config["dimensions"] = serde_json::json!(dims);
+            }
+
+            let mut embedders: HashMap<String, serde_json::Value> = HashMap::new();
+            embedders.insert(self.embedder_name.clone(), embedder_config);
+
+            let task = index.set_embedders(embedders).await?;
+            task.wait_for_completion(&self.client, None, None).await?;
+
+            info!("Embedder '{}' configured successfully", self.embedder_name);
+        }
 
         info!(
             "Meilisearch index '{}' configured successfully",

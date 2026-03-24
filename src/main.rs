@@ -29,12 +29,27 @@ async fn main() {
     info!("Connected to ScyllaDB");
 
     info!("Connecting to Meilisearch at {}...", config.meilisearch_url);
-    let media_meili = MeiliIndex::new(
+    let mut media_meili = MeiliIndex::new(
         &config.meilisearch_url,
         config.meilisearch_key.as_deref(),
         "media",
         "id",
     );
+
+    if let Some(ref llama_url) = config.llama_cpp_url {
+        media_meili = media_meili.with_embedder(
+            llama_url,
+            &config.meilisearch_embedder,
+            config.embedding_dimensions,
+        );
+        info!(
+            "Embedding enabled: embedder='{}', url='{}', dimensions={:?}",
+            config.meilisearch_embedder, llama_url, config.embedding_dimensions
+        );
+    } else {
+        info!("Embedding disabled: llama_cpp_url not set (similar items search will not work)");
+    }
+
     let lists_meili = MeiliIndex::new(
         &config.meilisearch_url,
         config.meilisearch_key.as_deref(),

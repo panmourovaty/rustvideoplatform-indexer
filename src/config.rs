@@ -27,6 +27,19 @@ pub struct Config {
     pub sprite_items: usize,
     /// Canonical base URL of the site used when building sitemap URLs (e.g. "https://example.com")
     pub site_url: String,
+    /// URL of the llama.cpp server embeddings endpoint used for vector similarity search.
+    /// When set the indexer configures a REST embedder in the Meilisearch media index so
+    /// that every indexed document is automatically embedded and SimilarQuery works in the
+    /// main platform.
+    /// Example: "http://llama-cpp:8080/v1/embeddings"
+    pub llama_cpp_url: Option<String>,
+    /// Name of the Meilisearch embedder to configure (default: "default").
+    /// Must match the meilisearch_embedder value in the main platform config.
+    #[serde(default = "default_embedder_name")]
+    pub meilisearch_embedder: String,
+    /// Number of embedding vector dimensions produced by the model (e.g. 768, 1024, 1536).
+    /// Required when llama_cpp_url is set.
+    pub embedding_dimensions: Option<usize>,
 }
 
 fn default_batch_size() -> usize {
@@ -51,6 +64,10 @@ fn default_source_dir() -> String {
 
 fn default_sprite_items() -> usize {
     30
+}
+
+fn default_embedder_name() -> String {
+    "default".to_string()
 }
 
 impl Config {
@@ -93,6 +110,12 @@ impl Config {
                 .unwrap_or_else(default_sprite_items),
             site_url: env::var("SITE_URL")
                 .expect("SITE_URL must be set (or provide config.json)"),
+            llama_cpp_url: env::var("LLAMA_CPP_URL").ok(),
+            meilisearch_embedder: env::var("MEILISEARCH_EMBEDDER")
+                .unwrap_or_else(|_| default_embedder_name()),
+            embedding_dimensions: env::var("EMBEDDING_DIMENSIONS")
+                .ok()
+                .and_then(|v| v.parse().ok()),
         }
     }
 }
