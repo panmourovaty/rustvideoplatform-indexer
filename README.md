@@ -19,11 +19,17 @@ Copy `config.example.json` to `config.json` and fill in the values:
     "meilisearch_key": null,
     "meilisearch_embedder": {
         "name": "default",
-        "source": "ollama",
-        "url": "http://ollama:11434",
-        "model": "nomic-embed-text",
+        "source": "rest",
+        "url": "http://embedllama:8084/v1/embeddings",
         "document_template": "{{doc.name}} {{doc.description}}",
-        "dimensions": 768
+        "dimensions": 768,
+        "request": {
+            "model": "embedding",
+            "input": "{{text}}"
+        },
+        "response": {
+            "data": [{"embedding": "{{embedding}}"}]
+        }
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",
@@ -42,10 +48,10 @@ You can also use environment variables instead of `config.json`:
 | `MEILISEARCH_URL` | no | `http://localhost:7700` |
 | `MEILISEARCH_KEY` | no | none |
 | `MEILISEARCH_EMBEDDER` | no | `default` |
-| `MEILISEARCH_EMBEDDER_SOURCE` | no | `ollama` |
-| `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://ollama:11434` |
+| `MEILISEARCH_EMBEDDER_SOURCE` | no | `rest` |
+| `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://embedllama:8084/v1/embeddings` |
 | `MEILISEARCH_EMBEDDER_API_KEY` | depends on source | none |
-| `MEILISEARCH_EMBEDDER_MODEL` | no | `nomic-embed-text` |
+| `MEILISEARCH_EMBEDDER_MODEL` | no | none |
 | `MEILISEARCH_EMBEDDER_REVISION` | no | none |
 | `MEILISEARCH_EMBEDDER_POOLING` | no | none |
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE` | no | `{{doc.name}} {{doc.description}}` |
@@ -61,7 +67,7 @@ You can also use environment variables instead of `config.json`:
 | `POLL_INTERVAL_SECS` | no | `30` |
 | `SITE_URL` | yes | — |
 
-For the default Ollama setup, only `source`, `url`, `model`, `documentTemplate`, and `dimensions` are needed. `request`, `response`, and `headers` are primarily relevant for `rest` embedders.
+For `rest` embedders (the default), `source`, `url`, `dimensions`, `request`, and `response` are needed. For `ollama` source, use `model` instead of `request`/`response`.
 
 ## Building
 

@@ -6,15 +6,15 @@
     "meilisearch_embedder": {
         "name": "default",
         "source": "rest",
-        "url": "http://embedllama:11434/api/embeddings",
+        "url": "http://embedllama:8084/v1/embeddings",
         "document_template": "{{doc.name}} {{doc.description}}",
         "dimensions": 768,
         "request": {
-            "model": "qwen3-embedding",
-            "prompt": "{{text}}"
+            "model": "embedding",
+            "input": "{{text}}"
         },
         "response": {
-            "embedding": "{{embedding}}"
+            "data": [{"embedding": "{{embedding}}"}]
         }
     },
     "batch_size": 1000,

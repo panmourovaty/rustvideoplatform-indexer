@@ -61,7 +61,7 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
     MeilisearchEmbedderConfig {
         name: default_meilisearch_embedder_name(),
         source: default_meilisearch_embedder_source(),
-        url: Some("http://embedllama:11434/api/embeddings".to_string()),
+        url: Some("http://embedllama:8084/v1/embeddings".to_string()),
         api_key: None,
         model: None,
         revision: None,
@@ -70,11 +70,11 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         document_template_max_bytes: None,
         dimensions: Some(768),
         request: Some(serde_json::json!({
-            "model": "qwen3-embedding",
-            "prompt": "{{text}}"
+            "model": "embedding",
+            "input": "{{text}}"
         })),
         response: Some(serde_json::json!({
-            "embedding": "{{embedding}}"
+            "data": [{"embedding": "{{embedding}}"}]
         })),
         headers: None,
         binary_quantized: None,
