@@ -67,7 +67,7 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         revision: None,
         pooling: None,
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
-        document_template_max_bytes: None,
+        document_template_max_bytes: Some(1500),
         dimensions: Some(768),
         request: Some(serde_json::json!({
             "model": "embedding",
