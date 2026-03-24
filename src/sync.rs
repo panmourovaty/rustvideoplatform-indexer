@@ -31,18 +31,24 @@ async fn count_reactions(
     Ok((likes, dislikes))
 }
 
-/// Build the user-provided vector payload expected by Meilisearch.
-/// The embedder is configured on the index and the text payload is generated here.
+/// Build the `_vectors` payload only for user-provided embedders.
+/// REST embedders configured in Meilisearch generate vectors remotely, so
+/// documents must not send `_vectors.<embedder>.text`.
 fn build_media_vectors(
     embedder_name: &str,
+    embedder_source: &str,
     name: &str,
     description: &str,
 ) -> serde_json::Value {
-    json!({
-        embedder_name: {
-            "text": format!("{name}\n\n{description}")
-        }
-    })
+    if embedder_source.eq_ignore_ascii_case("userProvided") {
+        json!({
+            embedder_name: {
+                "text": format!("{name}\n\n{description}")
+            }
+        })
+    } else {
+        json!(null)
+    }
 }
 
 /// Perform a full sync of all media records from ScyllaDB into Meilisearch.
@@ -51,6 +57,7 @@ pub async fn full_sync(
     meili: &MeiliIndex,
     batch_size: usize,
     embedder_name: &str,
+    embedder_source: &str,
 ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full media sync from ScyllaDB to Meilisearch...");
 
@@ -127,7 +134,7 @@ pub async fn full_sync(
                 public: visibility == "public",
                 visibility: visibility.clone(),
                 restricted_to_group: restricted_to_group.clone(),
-                _vectors: build_media_vectors(embedder_name, name, &description),
+                _vectors: build_media_vectors(embedder_name, embedder_source, name, &description),
             });
         }
 
@@ -147,6 +154,7 @@ pub async fn sync_single(
     meili: &MeiliIndex,
     media_id: &str,
     embedder_name: &str,
+    embedder_source: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let result = db
         .session
@@ -193,7 +201,12 @@ pub async fn sync_single(
                 public: visibility == "public",
                 visibility,
                 restricted_to_group,
-                _vectors: build_media_vectors(embedder_name, &name, &description),
+                _vectors: build_media_vectors(
+                    embedder_name,
+                    embedder_source,
+                    &name,
+                    &description,
+                ),
             };
             meili.upsert_document(&doc).await?;
             info!("Upserted document '{media_id}' in Meilisearch");

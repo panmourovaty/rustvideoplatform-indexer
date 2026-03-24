@@ -68,6 +68,7 @@ async fn main() {
         &media_meili,
         config.batch_size,
         &config.meilisearch_embedder.name,
+        &config.meilisearch_embedder.source,
     )
     .await
     {
@@ -117,6 +118,7 @@ async fn main() {
     // Spawn polling tasks for each entity type
     let media_db = Arc::clone(&db);
     let media_embedder = config.meilisearch_embedder.name.clone();
+    let media_embedder_source = config.meilisearch_embedder.source.clone();
     let media_handle = tokio::spawn(async move {
         listener::poll_for_changes(
             &media_db,
@@ -124,18 +126,19 @@ async fn main() {
             "media",
             poll_interval,
             Some(media_embedder),
+            Some(media_embedder_source),
         )
         .await;
     });
 
     let list_db = Arc::clone(&db);
     let list_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval, None).await;
+        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval, None, None).await;
     });
 
     let user_db = Arc::clone(&db);
     let user_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval, None).await;
+        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval, None, None).await;
     });
 
     // Periodic cache refresh task
