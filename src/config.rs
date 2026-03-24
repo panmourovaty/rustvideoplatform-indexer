@@ -15,6 +15,8 @@ pub struct MeilisearchEmbedderConfig {
     pub document_template: Option<String>,
     pub document_template_max_bytes: Option<usize>,
     pub dimensions: Option<usize>,
+    pub request: Option<serde_json::Value>,
+    pub response: Option<serde_json::Value>,
     pub binary_quantized: Option<bool>,
 }
 
@@ -65,6 +67,12 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
         document_template_max_bytes: None,
         dimensions: Some(1024),
+        request: Some(serde_json::json!({
+            "text": "{{text}}"
+        })),
+        response: Some(serde_json::json!({
+            "embedding": "{{embedding}}"
+        })),
         binary_quantized: None,
     }
 }
@@ -137,6 +145,14 @@ impl Config {
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .or_else(|| default_meilisearch_embedder().dimensions),
+                request: env::var("MEILISEARCH_EMBEDDER_REQUEST")
+                    .ok()
+                    .and_then(|v| serde_json::from_str(&v).ok())
+                    .or_else(|| default_meilisearch_embedder().request),
+                response: env::var("MEILISEARCH_EMBEDDER_RESPONSE")
+                    .ok()
+                    .and_then(|v| serde_json::from_str(&v).ok())
+                    .or_else(|| default_meilisearch_embedder().response),
                 binary_quantized: env::var("MEILISEARCH_EMBEDDER_BINARY_QUANTIZED")
                     .ok()
                     .and_then(|v| v.parse().ok()),

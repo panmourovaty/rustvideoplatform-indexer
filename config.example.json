@@ -8,7 +8,13 @@
         "source": "rest",
         "url": "http://embedllama:8084",
         "document_template": "{{doc.name}} {{doc.description}}",
-        "dimensions": 1024
+        "dimensions": 1024,
+        "request": {
+            "text": "{{text}}"
+        },
+        "response": {
+            "embedding": "{{embedding}}"
+        }
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",

@@ -22,7 +22,9 @@ Copy `config.example.json` to `config.json` and fill in the values:
         "source": "rest",
         "url": "http://embedllama:8084",
         "document_template": "{{doc.name}} {{doc.description}}",
-        "dimensions": 1024
+        "dimensions": 1024,
+        "request": { "text": "{{text}}" },
+        "response": { "embedding": "{{embedding}}" }
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",
@@ -50,6 +52,8 @@ You can also use environment variables instead of `config.json`:
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE` | no | `{{doc.name}} {{doc.description}}` |
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE_MAX_BYTES` | no | none |
 | `MEILISEARCH_EMBEDDER_DIMENSIONS` | no | `1024` |
+| `MEILISEARCH_EMBEDDER_REQUEST` | no | `{"text":"{{text}}"}` |
+| `MEILISEARCH_EMBEDDER_RESPONSE` | no | `{"embedding":"{{embedding}}"}` |
 | `MEILISEARCH_EMBEDDER_BINARY_QUANTIZED` | no | none |
 | `BATCH_SIZE` | no | `1000` |
 | `REDIS_URL` | yes | — |

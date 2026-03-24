@@ -99,6 +99,8 @@ impl MeiliIndex {
                 document_template: embedder_config.document_template.clone(),
                 document_template_max_bytes: embedder_config.document_template_max_bytes,
                 dimensions: embedder_config.dimensions,
+                request: embedder_config.request.clone(),
+                response: embedder_config.response.clone(),
                 binary_quantized: embedder_config.binary_quantized,
                 ..Embedder::default()
             },
