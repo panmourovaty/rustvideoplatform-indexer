@@ -33,21 +33,21 @@ async fn count_reactions(
 
 /// Build the `_vectors` payload only for user-provided embedders.
 /// REST embedders configured in Meilisearch generate vectors remotely, so
-/// documents must not send `_vectors.<embedder>.text`.
+/// documents must omit `_vectors` entirely.
 fn build_media_vectors(
     embedder_name: &str,
     embedder_source: &str,
     name: &str,
     description: &str,
-) -> serde_json::Value {
+) -> Option<serde_json::Value> {
     if embedder_source.eq_ignore_ascii_case("userProvided") {
-        json!({
+        Some(json!({
             embedder_name: {
                 "text": format!("{name}\n\n{description}")
             }
-        })
+        }))
     } else {
-        json!(null)
+        None
     }
 }
 

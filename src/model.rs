@@ -15,7 +15,8 @@ pub struct MeiliMedia {
     pub public: bool,
     pub visibility: String,
     pub restricted_to_group: Option<String>,
-    pub _vectors: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _vectors: Option<serde_json::Value>,
 }
 
 /// Document schema for the Meilisearch "lists" index.
