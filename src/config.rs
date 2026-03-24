@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 
 #[derive(Deserialize, Clone)]
@@ -17,6 +18,7 @@ pub struct MeilisearchEmbedderConfig {
     pub dimensions: Option<usize>,
     pub request: Option<serde_json::Value>,
     pub response: Option<serde_json::Value>,
+    pub headers: Option<HashMap<String, String>>,
     pub binary_quantized: Option<bool>,
 }
 
@@ -59,20 +61,26 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
     MeilisearchEmbedderConfig {
         name: default_meilisearch_embedder_name(),
         source: default_meilisearch_embedder_source(),
-        url: Some("http://embedllama:8084".to_string()),
+        url: Some("http://embedllama:8084/v1/embeddings".to_string()),
         api_key: None,
-        model: None,
+        model: Some("llama.cpp".to_string()),
         revision: None,
         pooling: None,
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
         document_template_max_bytes: None,
         dimensions: Some(1024),
         request: Some(serde_json::json!({
-            "text": "{{text}}"
+            "model": "llama.cpp",
+            "input": ["{{text}}", "{{..}}"],
+            "encoding_format": "float"
         })),
         response: Some(serde_json::json!({
-            "embedding": "{{embedding}}"
+            "data": [
+                { "embedding": "{{embedding}}" },
+                "{{..}}"
+            ]
         })),
+        headers: None,
         binary_quantized: None,
     }
 }
@@ -132,7 +140,9 @@ impl Config {
                     .ok()
                     .or_else(|| default_meilisearch_embedder().url),
                 api_key: env::var("MEILISEARCH_EMBEDDER_API_KEY").ok(),
-                model: env::var("MEILISEARCH_EMBEDDER_MODEL").ok(),
+                model: env::var("MEILISEARCH_EMBEDDER_MODEL")
+                    .ok()
+                    .or_else(|| default_meilisearch_embedder().model),
                 revision: env::var("MEILISEARCH_EMBEDDER_REVISION").ok(),
                 pooling: env::var("MEILISEARCH_EMBEDDER_POOLING").ok(),
                 document_template: env::var("MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE")
@@ -153,6 +163,9 @@ impl Config {
                     .ok()
                     .and_then(|v| serde_json::from_str(&v).ok())
                     .or_else(|| default_meilisearch_embedder().response),
+                headers: env::var("MEILISEARCH_EMBEDDER_HEADERS")
+                    .ok()
+                    .and_then(|v| serde_json::from_str(&v).ok()),
                 binary_quantized: env::var("MEILISEARCH_EMBEDDER_BINARY_QUANTIZED")
                     .ok()
                     .and_then(|v| v.parse().ok()),

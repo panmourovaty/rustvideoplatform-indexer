@@ -6,14 +6,20 @@
     "meilisearch_embedder": {
         "name": "default",
         "source": "rest",
-        "url": "http://embedllama:8084",
+        "url": "http://embedllama:8084/v1/embeddings",
+        "model": "llama.cpp",
         "document_template": "{{doc.name}} {{doc.description}}",
         "dimensions": 1024,
         "request": {
-            "text": "{{text}}"
+            "model": "llama.cpp",
+            "input": ["{{text}}", "{{..}}"],
+            "encoding_format": "float"
         },
         "response": {
-            "embedding": "{{embedding}}"
+            "data": [
+                { "embedding": "{{embedding}}" },
+                "{{..}}"
+            ]
         }
     },
     "batch_size": 1000,

@@ -20,11 +20,21 @@ Copy `config.example.json` to `config.json` and fill in the values:
     "meilisearch_embedder": {
         "name": "default",
         "source": "rest",
-        "url": "http://embedllama:8084",
+        "url": "http://embedllama:8084/v1/embeddings",
+        "model": "llama.cpp",
         "document_template": "{{doc.name}} {{doc.description}}",
         "dimensions": 1024,
-        "request": { "text": "{{text}}" },
-        "response": { "embedding": "{{embedding}}" }
+        "request": {
+            "model": "llama.cpp",
+            "input": ["{{text}}", "{{..}}"],
+            "encoding_format": "float"
+        },
+        "response": {
+            "data": [
+                { "embedding": "{{embedding}}" },
+                "{{..}}"
+            ]
+        }
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",
@@ -44,22 +54,25 @@ You can also use environment variables instead of `config.json`:
 | `MEILISEARCH_KEY` | no | none |
 | `MEILISEARCH_EMBEDDER` | no | `default` |
 | `MEILISEARCH_EMBEDDER_SOURCE` | no | `rest` |
-| `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://embedllama:8084` |
+| `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://embedllama:8084/v1/embeddings` |
 | `MEILISEARCH_EMBEDDER_API_KEY` | depends on source | none |
-| `MEILISEARCH_EMBEDDER_MODEL` | no | none |
+| `MEILISEARCH_EMBEDDER_MODEL` | no | `llama.cpp` |
 | `MEILISEARCH_EMBEDDER_REVISION` | no | none |
 | `MEILISEARCH_EMBEDDER_POOLING` | no | none |
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE` | no | `{{doc.name}} {{doc.description}}` |
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE_MAX_BYTES` | no | none |
 | `MEILISEARCH_EMBEDDER_DIMENSIONS` | no | `1024` |
-| `MEILISEARCH_EMBEDDER_REQUEST` | no | `{"text":"{{text}}"}` |
-| `MEILISEARCH_EMBEDDER_RESPONSE` | no | `{"embedding":"{{embedding}}"}` |
+| `MEILISEARCH_EMBEDDER_REQUEST` | no | `{"model":"llama.cpp","input":["{{text}}","{{..}}"],"encoding_format":"float"}` |
+| `MEILISEARCH_EMBEDDER_RESPONSE` | no | `{"data":[{"embedding":"{{embedding}}"},"{{..}}"]}` |
 | `MEILISEARCH_EMBEDDER_BINARY_QUANTIZED` | no | none |
+| `MEILISEARCH_EMBEDDER_HEADERS` | no | none |
 | `BATCH_SIZE` | no | `1000` |
 | `REDIS_URL` | yes | — |
 | `CACHE_INTERVAL_SECS` | no | `60` |
 | `POLL_INTERVAL_SECS` | no | `30` |
 | `SITE_URL` | yes | — |
+
+`MEILISEARCH_EMBEDDER_HEADERS` can be stored in config for future use with REST embedders, but the current Meilisearch Rust SDK version used by this indexer does not expose a `headers` field on its embedder settings type, so these headers are not sent yet.
 
 ## Building
 

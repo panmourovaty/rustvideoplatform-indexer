@@ -1,11 +1,7 @@
-use std::collections::HashMap;
-
 use log::{error, info};
-use meilisearch_sdk::{
-    client::Client,
-    settings::{Embedder, EmbedderSource},
-};
-use serde::{de::DeserializeOwned, Serialize};
+use meilisearch_sdk::client::Client;
+use reqwest::StatusCode;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::config::MeilisearchEmbedderConfig;
 
@@ -13,6 +9,9 @@ pub struct MeiliIndex {
     client: Client,
     index_name: String,
     primary_key: String,
+    base_url: String,
+    api_key: Option<String>,
+    http_client: reqwest::Client,
 }
 
 impl MeiliIndex {
@@ -22,6 +21,9 @@ impl MeiliIndex {
             client,
             index_name: index_name.to_owned(),
             primary_key: primary_key.to_owned(),
+            base_url: url.trim_end_matches('/').to_owned(),
+            api_key: key.map(str::to_owned),
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -80,33 +82,7 @@ impl MeiliIndex {
             .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
-        let embedders = HashMap::from([(
-            embedder_config.name.clone(),
-            Embedder {
-                source: match embedder_config.source.as_str() {
-                    "huggingFace" => EmbedderSource::HuggingFace,
-                    "openAi" => EmbedderSource::OpenAi,
-                    "ollama" => EmbedderSource::Ollama,
-                    "rest" => EmbedderSource::Rest,
-                    "composite" => EmbedderSource::Composite,
-                    _ => EmbedderSource::UserProvided,
-                },
-                url: embedder_config.url.clone(),
-                api_key: embedder_config.api_key.clone(),
-                model: embedder_config.model.clone(),
-                revision: embedder_config.revision.clone(),
-                pooling: embedder_config.pooling.clone(),
-                document_template: embedder_config.document_template.clone(),
-                document_template_max_bytes: embedder_config.document_template_max_bytes,
-                dimensions: embedder_config.dimensions,
-                request: embedder_config.request.clone(),
-                response: embedder_config.response.clone(),
-                binary_quantized: embedder_config.binary_quantized,
-                ..Embedder::default()
-            },
-        )]);
-        let task = index.set_embedders(&embedders).await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        self.configure_embedders_via_http(embedder_config).await?;
 
         info!(
             "Meilisearch index '{}' configured successfully",
@@ -240,4 +216,174 @@ impl MeiliIndex {
         }
         Ok(())
     }
+
+    async fn configure_embedders_via_http(
+        &self,
+        embedder_config: &MeilisearchEmbedderConfig,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut embedder = serde_json::Map::new();
+        embedder.insert(
+            "source".to_string(),
+            serde_json::Value::String(embedder_config.source.clone()),
+        );
+
+        if let Some(url) = &embedder_config.url {
+            embedder.insert("url".to_string(), serde_json::Value::String(url.clone()));
+        }
+        if let Some(api_key) = &embedder_config.api_key {
+            embedder.insert("apiKey".to_string(), serde_json::Value::String(api_key.clone()));
+        }
+        if let Some(model) = &embedder_config.model {
+            embedder.insert("model".to_string(), serde_json::Value::String(model.clone()));
+        }
+        if let Some(revision) = &embedder_config.revision {
+            embedder.insert(
+                "revision".to_string(),
+                serde_json::Value::String(revision.clone()),
+            );
+        }
+        if let Some(pooling) = &embedder_config.pooling {
+            embedder.insert(
+                "pooling".to_string(),
+                serde_json::Value::String(pooling.clone()),
+            );
+        }
+        if let Some(document_template) = &embedder_config.document_template {
+            embedder.insert(
+                "documentTemplate".to_string(),
+                serde_json::Value::String(document_template.clone()),
+            );
+        }
+        if let Some(document_template_max_bytes) = embedder_config.document_template_max_bytes {
+            embedder.insert(
+                "documentTemplateMaxBytes".to_string(),
+                serde_json::Value::Number(document_template_max_bytes.into()),
+            );
+        }
+        if let Some(dimensions) = embedder_config.dimensions {
+            embedder.insert(
+                "dimensions".to_string(),
+                serde_json::Value::Number(dimensions.into()),
+            );
+        }
+        if let Some(request) = &embedder_config.request {
+            embedder.insert("request".to_string(), request.clone());
+        }
+        if let Some(response) = &embedder_config.response {
+            embedder.insert("response".to_string(), response.clone());
+        }
+        if let Some(headers) = &embedder_config.headers {
+            embedder.insert("headers".to_string(), serde_json::to_value(headers)?);
+        }
+        if let Some(binary_quantized) = embedder_config.binary_quantized {
+            embedder.insert(
+                "binaryQuantized".to_string(),
+                serde_json::Value::Bool(binary_quantized),
+            );
+        }
+
+        let payload = serde_json::json!({
+            embedder_config.name.clone(): serde_json::Value::Object(embedder),
+        });
+
+        let url = format!(
+            "{}/indexes/{}/settings/embedders",
+            self.base_url, self.index_name
+        );
+
+        let mut request = self
+            .http_client
+            .patch(&url)
+            .header("Content-Type", "application/json");
+
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {api_key}"));
+        }
+
+        let response = request.json(&payload).send().await?;
+        let status = response.status();
+
+        if status != StatusCode::ACCEPTED {
+            let body = response.text().await?;
+            return Err(format!(
+                "Failed to configure embedders for index '{}': {} {}",
+                self.index_name, status, body
+            )
+            .into());
+        }
+
+        let task: MeiliTaskInfo = response.json().await?;
+        self.wait_for_task(task.task_uid).await?;
+        Ok(())
+    }
+
+    async fn wait_for_task(
+        &self,
+        task_uid: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        loop {
+            let url = format!("{}/tasks/{}", self.base_url, task_uid);
+            let mut request = self.http_client.get(&url);
+
+            if let Some(api_key) = &self.api_key {
+                request = request.header("Authorization", format!("Bearer {api_key}"));
+            }
+
+            let response = request.send().await?;
+            let status = response.status();
+            if status != StatusCode::OK {
+                let body = response.text().await?;
+                return Err(format!(
+                    "Failed to fetch Meilisearch task {}: {} {}",
+                    task_uid, status, body
+                )
+                .into());
+            }
+
+            let task: MeiliTaskStatus = response.json().await?;
+            match task.status.as_str() {
+                "enqueued" | "processing" => {
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                "succeeded" => return Ok(()),
+                "failed" => {
+                    return Err(task
+                        .error
+                        .map(|e| {
+                            format!(
+                                "Meilisearch task {} failed: {}",
+                                task_uid, e.error_message
+                            )
+                        })
+                        .unwrap_or_else(|| format!("Meilisearch task {} failed", task_uid))
+                        .into())
+                }
+                other => {
+                    return Err(format!(
+                        "Unexpected Meilisearch task status for task {}: {}",
+                        task_uid, other
+                    )
+                    .into())
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MeiliTaskInfo {
+    #[serde(rename = "taskUid")]
+    task_uid: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeiliTaskStatus {
+    status: String,
+    error: Option<MeiliTaskError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeiliTaskError {
+    #[serde(rename = "message")]
+    error_message: String,
 }
