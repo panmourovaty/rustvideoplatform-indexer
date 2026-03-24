@@ -67,7 +67,34 @@ You can also use environment variables instead of `config.json`:
 | `POLL_INTERVAL_SECS` | no | `30` |
 | `SITE_URL` | yes | — |
 
-For `rest` embedders (the default), `source`, `url`, `dimensions`, `request`, and `response` are needed. For `ollama` source, use `model` instead of `request`/`response`.
+### Embedder source types
+
+**`rest`** (default) — for llama.cpp or any OpenAI-compatible embedding server:
+```json
+"meilisearch_embedder": {
+    "source": "rest",
+    "url": "http://embedllama:8084/v1/embeddings",
+    "dimensions": 768,
+    "document_template": "{{doc.name}} {{doc.description}}",
+    "request": { "model": "embedding", "input": "{{text}}" },
+    "response": { "data": [{"embedding": "{{embedding}}"}] }
+}
+```
+
+**`ollama`** — for Ollama (uses Meilisearch's native Ollama integration):
+```json
+"meilisearch_embedder": {
+    "source": "ollama",
+    "url": "http://embedllama:11434",
+    "model": "nomic-embed-text",
+    "dimensions": 768,
+    "document_template": "{{doc.name}} {{doc.description}}"
+}
+```
+
+> **Note:** Meilisearch ≥1.34.1 blocks requests to private IPs by default. When running
+> embedders on Docker-internal networks, set `MEILI_EXPERIMENTAL_ALLOWED_IP_NETWORKS=any`
+> (or a specific CIDR like `172.16.0.0/12`) on the Meilisearch container.
 
 ## Building
 
