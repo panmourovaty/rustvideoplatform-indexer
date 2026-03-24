@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+
 use log::{error, info};
-use meilisearch_sdk::client::Client;
+use meilisearch_sdk::{
+    client::Client,
+    settings::{Embedder, EmbedderSource},
+};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub struct MeiliIndex {
@@ -23,7 +28,7 @@ impl MeiliIndex {
     }
 
     /// Configure the "media" index with its specific settings.
-    pub async fn setup_media_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn setup_media_index(&self, embedder_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
         let task = self
@@ -34,7 +39,9 @@ impl MeiliIndex {
 
         let index = self.client.index(&self.index_name);
 
-        let task = index.set_searchable_attributes(["name", "owner"]).await?;
+        let task = index
+            .set_searchable_attributes(["name", "description", "owner"])
+            .await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
         let task = index
@@ -66,6 +73,17 @@ impl MeiliIndex {
                 "exactness",
             ])
             .await?;
+        task.wait_for_completion(&self.client, None, None).await?;
+
+        let embedders = HashMap::from([(
+            embedder_name.to_string(),
+            Embedder {
+                source: EmbedderSource::UserProvided,
+                document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
+                ..Embedder::default()
+            },
+        )]);
+        let task = index.set_embedders(&embedders).await?;
         task.wait_for_completion(&self.client, None, None).await?;
 
         info!(

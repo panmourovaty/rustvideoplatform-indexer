@@ -3,6 +3,7 @@
     "scylla_keyspace": "videoplatform",
     "meilisearch_url": "http://meilisearch:7700",
     "meilisearch_key": null,
+    "meilisearch_embedder": "default",
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",
     "cache_interval_secs": 60,

@@ -6,6 +6,7 @@ pub struct ScyllaDb {
     pub session: Arc<Session>,
     // Single-row lookups (prepared statements)
     pub get_media_by_id: PreparedStatement,
+    pub get_media_description: PreparedStatement,
     pub get_reactions_for_media: PreparedStatement,
     pub get_list_by_id: PreparedStatement,
     pub count_list_items: PreparedStatement,
@@ -27,9 +28,12 @@ impl ScyllaDb {
         Ok(ScyllaDb {
             get_media_by_id: session
                 .prepare(
-                    "SELECT id, name, owner, views, type, upload, visibility, restricted_to_group \
+                    "SELECT id, name, description, owner, views, type, upload, visibility, restricted_to_group \
                      FROM media WHERE id = ?",
                 )
+                .await?,
+            get_media_description: session
+                .prepare("SELECT description FROM media WHERE id = ?")
                 .await?,
             get_reactions_for_media: session
                 .prepare("SELECT user_login, reaction FROM media_likes WHERE media_id = ?")

@@ -8,6 +8,9 @@ pub struct Config {
     pub scylla_keyspace: String,
     pub meilisearch_url: String,
     pub meilisearch_key: Option<String>,
+    /// Embedder name to use for Meilisearch similar-document recommendations (default: "default")
+    #[serde(default = "default_meilisearch_embedder")]
+    pub meilisearch_embedder: String,
     /// Batch size for initial full sync (default: 1000)
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
@@ -31,6 +34,10 @@ pub struct Config {
 
 fn default_batch_size() -> usize {
     1000
+}
+
+fn default_meilisearch_embedder() -> String {
+    "default".to_string()
 }
 
 fn default_keyspace() -> String {
@@ -71,6 +78,8 @@ impl Config {
             meilisearch_url: env::var("MEILISEARCH_URL")
                 .unwrap_or_else(|_| "http://localhost:7700".to_string()),
             meilisearch_key: env::var("MEILISEARCH_KEY").ok(),
+            meilisearch_embedder: env::var("MEILISEARCH_EMBEDDER")
+                .unwrap_or_else(|_| default_meilisearch_embedder()),
             batch_size: env::var("BATCH_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

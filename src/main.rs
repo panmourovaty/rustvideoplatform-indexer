@@ -50,7 +50,7 @@ async fn main() {
 
     // Configure all Meilisearch indexes
     media_meili
-        .setup_media_index()
+        .setup_media_index(&config.meilisearch_embedder)
         .await
         .expect("Failed to configure media index");
     lists_meili
@@ -63,7 +63,14 @@ async fn main() {
         .expect("Failed to configure users index");
 
     // Perform initial full sync for all entity types
-    match sync::full_sync(&db, &media_meili, config.batch_size).await {
+    match sync::full_sync(
+        &db,
+        &media_meili,
+        config.batch_size,
+        &config.meilisearch_embedder,
+    )
+    .await
+    {
         Ok(count) => info!("Media sync completed: {count} documents"),
         Err(e) => {
             error!("Media sync failed: {e}");
@@ -109,18 +116,26 @@ async fn main() {
 
     // Spawn polling tasks for each entity type
     let media_db = Arc::clone(&db);
+    let media_embedder = config.meilisearch_embedder.clone();
     let media_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&media_db, &media_meili, "media", poll_interval).await;
+        listener::poll_for_changes(
+            &media_db,
+            &media_meili,
+            "media",
+            poll_interval,
+            Some(media_embedder),
+        )
+        .await;
     });
 
     let list_db = Arc::clone(&db);
     let list_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval).await;
+        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval, None).await;
     });
 
     let user_db = Arc::clone(&db);
     let user_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval).await;
+        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval, None).await;
     });
 
     // Periodic cache refresh task

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct MeiliMedia {
     pub id: String,
     pub name: String,
+    pub description: String,
     pub owner: String,
     pub views: i64,
     pub likes: i64,
@@ -14,6 +15,7 @@ pub struct MeiliMedia {
     pub public: bool,
     pub visibility: String,
     pub restricted_to_group: Option<String>,
+    pub _vectors: serde_json::Value,
 }
 
 /// Document schema for the Meilisearch "lists" index.

@@ -1,4 +1,5 @@
 use log::info;
+use serde_json::json;
 
 use crate::db::ScyllaDb;
 use crate::meilisearch::MeiliIndex;
@@ -30,18 +31,33 @@ async fn count_reactions(
     Ok((likes, dislikes))
 }
 
+/// Build the user-provided vector payload expected by Meilisearch.
+/// The embedder is configured on the index and the text payload is generated here.
+fn build_media_vectors(
+    embedder_name: &str,
+    name: &str,
+    description: &str,
+) -> serde_json::Value {
+    json!({
+        embedder_name: {
+            "text": format!("{name}\n\n{description}")
+        }
+    })
+}
+
 /// Perform a full sync of all media records from ScyllaDB into Meilisearch.
 pub async fn full_sync(
     db: &ScyllaDb,
     meili: &MeiliIndex,
     batch_size: usize,
+    embedder_name: &str,
 ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full media sync from ScyllaDB to Meilisearch...");
 
     let result = db
         .session
         .query_unpaged(
-            "SELECT id, name, owner, views, type, upload, visibility, restricted_to_group FROM media",
+            "SELECT id, name, description, owner, views, type, upload, visibility, restricted_to_group FROM media",
             &[],
         )
         .await?;
@@ -56,20 +72,52 @@ pub async fn full_sync(
     }
 
     // Collect all media rows first
-    let media_rows: Vec<(String, String, String, i64, String, i64, String, Option<String>)> =
-        rows_result
-            .rows::<(String, String, String, i64, String, i64, String, Option<String>)>()?
-            .filter_map(|r| r.ok())
-            .collect();
+    let media_rows: Vec<(
+        String,
+        String,
+        Option<String>,
+        String,
+        i64,
+        String,
+        i64,
+        String,
+        Option<String>,
+    )> = rows_result
+        .rows::<(
+            String,
+            String,
+            Option<String>,
+            String,
+            i64,
+            String,
+            i64,
+            String,
+            Option<String>,
+        )>()?
+        .filter_map(|r| r.ok())
+        .collect();
 
     let mut indexed: u64 = 0;
     for chunk in media_rows.chunks(batch_size) {
         let mut batch_docs = Vec::with_capacity(chunk.len());
-        for (id, name, owner, views, media_type, upload, visibility, restricted_to_group) in chunk {
+        for (
+            id,
+            name,
+            description,
+            owner,
+            views,
+            media_type,
+            upload,
+            visibility,
+            restricted_to_group,
+        ) in chunk
+        {
+            let description = description.clone().unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, id).await.unwrap_or((0, 0));
             batch_docs.push(MeiliMedia {
                 id: id.clone(),
                 name: name.clone(),
+                description: description.clone(),
                 owner: owner.clone(),
                 views: *views,
                 likes,
@@ -79,6 +127,7 @@ pub async fn full_sync(
                 public: visibility == "public",
                 visibility: visibility.clone(),
                 restricted_to_group: restricted_to_group.clone(),
+                _vectors: build_media_vectors(embedder_name, name, &description),
             });
         }
 
@@ -97,6 +146,7 @@ pub async fn sync_single(
     db: &ScyllaDb,
     meili: &MeiliIndex,
     media_id: &str,
+    embedder_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let result = db
         .session
@@ -104,14 +154,36 @@ pub async fn sync_single(
         .await?;
     let rows_result = result.into_rows_result()?;
     let row = rows_result
-        .maybe_first_row::<(String, String, String, i64, String, i64, String, Option<String>)>()?;
+        .maybe_first_row::<(
+            String,
+            String,
+            Option<String>,
+            String,
+            i64,
+            String,
+            i64,
+            String,
+            Option<String>,
+        )>()?;
 
     match row {
-        Some((id, name, owner, views, media_type, upload, visibility, restricted_to_group)) => {
+        Some((
+            id,
+            name,
+            description,
+            owner,
+            views,
+            media_type,
+            upload,
+            visibility,
+            restricted_to_group,
+        )) => {
+            let description = description.unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, &id).await.unwrap_or((0, 0));
             let doc = MeiliMedia {
                 id,
-                name,
+                name: name.clone(),
+                description: description.clone(),
                 owner,
                 views,
                 likes,
@@ -121,6 +193,7 @@ pub async fn sync_single(
                 public: visibility == "public",
                 visibility,
                 restricted_to_group,
+                _vectors: build_media_vectors(embedder_name, &name, &description),
             };
             meili.upsert_document(&doc).await?;
             info!("Upserted document '{media_id}' in Meilisearch");

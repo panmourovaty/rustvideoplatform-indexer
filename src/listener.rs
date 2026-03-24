@@ -11,6 +11,7 @@ pub async fn poll_for_changes(
     meili: &MeiliIndex,
     entity: &str,
     interval_secs: u64,
+    media_embedder_name: Option<String>,
 ) {
     info!("Starting polling-based sync for {entity} (interval: {interval_secs}s)");
     loop {
@@ -18,7 +19,8 @@ pub async fn poll_for_changes(
         info!("Running periodic {entity} sync...");
         match entity {
             "media" => {
-                if let Err(e) = sync::full_sync(db, meili, 1000).await {
+                let embedder_name = media_embedder_name.as_deref().unwrap_or("default");
+                if let Err(e) = sync::full_sync(db, meili, 1000, embedder_name).await {
                     log::error!("Media periodic sync failed: {e}");
                 }
             }
