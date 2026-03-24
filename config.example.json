@@ -5,21 +5,11 @@
     "meilisearch_key": null,
     "meilisearch_embedder": {
         "name": "default",
-        "source": "rest",
-        "url": "http://embedllama:8084/v1/embeddings",
+        "source": "ollama",
+        "url": "http://ollama:11434",
+        "model": "qwen3-embedding:0.6b",
         "document_template": "{{doc.name}} {{doc.description}}",
-        "dimensions": 1024,
-        "request": {
-            "model": "llama.cpp",
-            "input": ["{{text}}", "{{..}}"],
-            "encoding_format": "float"
-        },
-        "response": {
-            "data": [
-                { "embedding": "{{embedding}}" },
-                "{{..}}"
-            ]
-        }
+        "dimensions": 768
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",

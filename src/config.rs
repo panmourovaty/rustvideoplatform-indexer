@@ -61,25 +61,16 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
     MeilisearchEmbedderConfig {
         name: default_meilisearch_embedder_name(),
         source: default_meilisearch_embedder_source(),
-        url: Some("http://embedllama:8084/v1/embeddings".to_string()),
+        url: Some("http://ollama:11434".to_string()),
         api_key: None,
-        model: None,
+        model: Some("qwen3-embedding:0.6b".to_string()),
         revision: None,
         pooling: None,
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
         document_template_max_bytes: None,
-        dimensions: Some(1024),
-        request: Some(serde_json::json!({
-            "model": "llama.cpp",
-            "input": ["{{text}}", "{{..}}"],
-            "encoding_format": "float"
-        })),
-        response: Some(serde_json::json!({
-            "data": [
-                { "embedding": "{{embedding}}" },
-                "{{..}}"
-            ]
-        })),
+        dimensions: Some(768),
+        request: None,
+        response: None,
         headers: None,
         binary_quantized: None,
     }
@@ -90,7 +81,7 @@ fn default_meilisearch_embedder_name() -> String {
 }
 
 fn default_meilisearch_embedder_source() -> String {
-    "rest".to_string()
+    "ollama".to_string()
 }
 
 fn default_keyspace() -> String {
