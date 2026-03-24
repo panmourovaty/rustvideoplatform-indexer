@@ -63,7 +63,7 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         source: default_meilisearch_embedder_source(),
         url: Some("http://embedllama:8084/v1/embeddings".to_string()),
         api_key: None,
-        model: Some("llama.cpp".to_string()),
+        model: None,
         revision: None,
         pooling: None,
         document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
@@ -140,9 +140,7 @@ impl Config {
                     .ok()
                     .or_else(|| default_meilisearch_embedder().url),
                 api_key: env::var("MEILISEARCH_EMBEDDER_API_KEY").ok(),
-                model: env::var("MEILISEARCH_EMBEDDER_MODEL")
-                    .ok()
-                    .or_else(|| default_meilisearch_embedder().model),
+                model: env::var("MEILISEARCH_EMBEDDER_MODEL").ok(),
                 revision: env::var("MEILISEARCH_EMBEDDER_REVISION").ok(),
                 pooling: env::var("MEILISEARCH_EMBEDDER_POOLING").ok(),
                 document_template: env::var("MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE")

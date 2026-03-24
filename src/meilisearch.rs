@@ -233,8 +233,10 @@ impl MeiliIndex {
         if let Some(api_key) = &embedder_config.api_key {
             embedder.insert("apiKey".to_string(), serde_json::Value::String(api_key.clone()));
         }
-        if let Some(model) = &embedder_config.model {
-            embedder.insert("model".to_string(), serde_json::Value::String(model.clone()));
+        if embedder_config.source != "rest" {
+            if let Some(model) = &embedder_config.model {
+                embedder.insert("model".to_string(), serde_json::Value::String(model.clone()));
+            }
         }
         if let Some(revision) = &embedder_config.revision {
             embedder.insert(

@@ -7,7 +7,6 @@
         "name": "default",
         "source": "rest",
         "url": "http://embedllama:8084/v1/embeddings",
-        "model": "llama.cpp",
         "document_template": "{{doc.name}} {{doc.description}}",
         "dimensions": 1024,
         "request": {

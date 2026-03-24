@@ -21,7 +21,6 @@ Copy `config.example.json` to `config.json` and fill in the values:
         "name": "default",
         "source": "rest",
         "url": "http://embedllama:8084/v1/embeddings",
-        "model": "llama.cpp",
         "document_template": "{{doc.name}} {{doc.description}}",
         "dimensions": 1024,
         "request": {
@@ -56,7 +55,7 @@ You can also use environment variables instead of `config.json`:
 | `MEILISEARCH_EMBEDDER_SOURCE` | no | `rest` |
 | `MEILISEARCH_EMBEDDER_URL` | depends on source | `http://embedllama:8084/v1/embeddings` |
 | `MEILISEARCH_EMBEDDER_API_KEY` | depends on source | none |
-| `MEILISEARCH_EMBEDDER_MODEL` | no | `llama.cpp` |
+| `MEILISEARCH_EMBEDDER_MODEL` | no | none |
 | `MEILISEARCH_EMBEDDER_REVISION` | no | none |
 | `MEILISEARCH_EMBEDDER_POOLING` | no | none |
 | `MEILISEARCH_EMBEDDER_DOCUMENT_TEMPLATE` | no | `{{doc.name}} {{doc.description}}` |
