@@ -38,11 +38,13 @@ impl MeiliIndex {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        let task = self
-            .client
-            .create_index(&self.index_name, Some(&self.primary_key))
-            .await?;
-        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        if self.client.get_index(&self.index_name).await.is_err() {
+            let task = self
+                .client
+                .create_index(&self.index_name, Some(&self.primary_key))
+                .await?;
+            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        }
 
         let index = self.client.index(&self.index_name);
 
@@ -95,11 +97,13 @@ impl MeiliIndex {
     pub async fn setup_lists_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        let task = self
-            .client
-            .create_index(&self.index_name, Some(&self.primary_key))
-            .await?;
-        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        if self.client.get_index(&self.index_name).await.is_err() {
+            let task = self
+                .client
+                .create_index(&self.index_name, Some(&self.primary_key))
+                .await?;
+            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        }
 
         let index = self.client.index(&self.index_name);
 
@@ -139,11 +143,13 @@ impl MeiliIndex {
     pub async fn setup_users_index(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
-        let task = self
-            .client
-            .create_index(&self.index_name, Some(&self.primary_key))
-            .await?;
-        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        if self.client.get_index(&self.index_name).await.is_err() {
+            let task = self
+                .client
+                .create_index(&self.index_name, Some(&self.primary_key))
+                .await?;
+            task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
+        }
 
         let index = self.client.index(&self.index_name);
 

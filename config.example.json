@@ -8,6 +8,7 @@
         "source": "rest",
         "url": "http://embedllama:8084/v1/embeddings",
         "document_template": "{{doc.name}} {{doc.description}}",
+        "document_template_max_bytes": 1500,
         "dimensions": 768,
         "request": {
             "model": "embedding",
