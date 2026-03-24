@@ -7,5 +7,8 @@
     "redis_url": "redis://dragonfly:6379",
     "cache_interval_secs": 60,
     "poll_interval_secs": 30,
-    "site_url": "https://example.com"
+    "site_url": "https://example.com",
+    "llama_cpp_url": "http://llama-cpp:8080/v1/embeddings",
+    "meilisearch_embedder": "default",
+    "embedding_dimensions": 768
 }
