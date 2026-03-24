@@ -30,6 +30,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: panmourovaty/rustvideoplatform-indexer:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   build:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
