@@ -5,11 +5,17 @@
     "meilisearch_key": null,
     "meilisearch_embedder": {
         "name": "default",
-        "source": "ollama",
-        "url": "http://ollama:11434",
-        "model": "qwen3-embedding:0.6b",
+        "source": "rest",
+        "url": "http://embedllama:11434/api/embed",
         "document_template": "{{doc.name}} {{doc.description}}",
-        "dimensions": 768
+        "dimensions": 768,
+        "request": {
+            "model": "nomic-embed-text",
+            "input": "{{text}}"
+        },
+        "response": {
+            "embeddings": ["{{embedding}}"]
+        }
     },
     "batch_size": 1000,
     "redis_url": "redis://dragonfly:6379",
