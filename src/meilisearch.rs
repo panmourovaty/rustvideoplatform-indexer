@@ -42,14 +42,14 @@ impl MeiliIndex {
             .client
             .create_index(&self.index_name, Some(&self.primary_key))
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let index = self.client.index(&self.index_name);
 
         let task = index
             .set_searchable_attributes(["name", "description", "owner"])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_filterable_attributes([
@@ -63,12 +63,12 @@ impl MeiliIndex {
                 "owner",
             ])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_sortable_attributes(["upload", "views", "likes"])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_ranking_rules([
@@ -80,7 +80,7 @@ impl MeiliIndex {
                 "exactness",
             ])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         self.configure_embedders_via_http(embedder_config).await?;
 
@@ -99,22 +99,22 @@ impl MeiliIndex {
             .client
             .create_index(&self.index_name, Some(&self.primary_key))
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let index = self.client.index(&self.index_name);
 
         let task = index.set_searchable_attributes(["name", "owner"]).await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_filterable_attributes(["visibility", "restricted_to_group", "owner"])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_sortable_attributes(["created", "item_count"])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_ranking_rules([
@@ -126,7 +126,7 @@ impl MeiliIndex {
                 "exactness",
             ])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         info!(
             "Meilisearch index '{}' configured successfully",
@@ -143,14 +143,14 @@ impl MeiliIndex {
             .client
             .create_index(&self.index_name, Some(&self.primary_key))
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let index = self.client.index(&self.index_name);
 
         let task = index
             .set_searchable_attributes(["name", "login"])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         let task = index
             .set_ranking_rules([
@@ -162,7 +162,7 @@ impl MeiliIndex {
                 "exactness",
             ])
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         info!(
             "Meilisearch index '{}' configured successfully",
@@ -183,7 +183,9 @@ impl MeiliIndex {
         let task = index
             .add_documents(documents, Some(self.primary_key.as_str()))
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        // Use custom wait_for_task which has no timeout — the SDK default of 5s
+        // is too short when Meilisearch generates embeddings via a slow model.
+        self.wait_for_task(task.task_uid as u64).await?;
         Ok(())
     }
 
@@ -196,7 +198,7 @@ impl MeiliIndex {
         let task = index
             .add_documents(std::slice::from_ref(document), Some(self.primary_key.as_str()))
             .await?;
-        task.wait_for_completion(&self.client, None, None).await?;
+        self.wait_for_task(task.task_uid as u64).await?;
         Ok(())
     }
 
@@ -205,7 +207,7 @@ impl MeiliIndex {
         let index = self.client.index(&self.index_name);
         match index.delete_document(id).await {
             Ok(task) => {
-                task.wait_for_completion(&self.client, None, None).await?;
+                self.wait_for_task(task.task_uid as u64).await?;
             }
             Err(e) => {
                 error!(
@@ -323,6 +325,8 @@ impl MeiliIndex {
         &self,
         task_uid: u64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut poll_interval = std::time::Duration::from_millis(200);
+        let max_interval = std::time::Duration::from_secs(5);
         loop {
             let url = format!("{}/tasks/{}", self.base_url, task_uid);
             let mut request = self.http_client.get(&url);
@@ -345,7 +349,8 @@ impl MeiliIndex {
             let task: MeiliTaskStatus = response.json().await?;
             match task.status.as_str() {
                 "enqueued" | "processing" => {
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    tokio::time::sleep(poll_interval).await;
+                    poll_interval = (poll_interval * 2).min(max_interval);
                 }
                 "succeeded" => return Ok(()),
                 "failed" => {
