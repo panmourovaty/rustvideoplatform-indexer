@@ -58,10 +58,27 @@ impl MeiliIndex {
         }
     }
 
+    /// Log a reminder about the Meilisearch REST-embedder timeout.
+    ///
+    /// The timeout cannot be set via any Meilisearch API call — it requires the
+    /// environment variable `MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS`
+    /// to be set on the Meilisearch server at startup (≥ v1.26.0).
+    /// The default is 30 seconds, which is easily exceeded when embedding large
+    /// subtitle files.  This function logs an info message reminding operators
+    /// to verify the server is configured correctly.
+    pub fn log_embedding_timeout_reminder(timeout_secs: u64) {
+        info!(
+            "Embedding timeout reminder: ensure the Meilisearch server has \
+             MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS={timeout_secs} set \
+             (Meilisearch ≥ v1.26.0, default is 30s which may be too short for subtitle indexing)."
+        );
+    }
+
     /// Configure the "media" index with its specific settings.
     pub async fn setup_media_index(
         &self,
         embedder_config: &MeilisearchEmbedderConfig,
+        embedding_timeout_secs: u64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
@@ -70,7 +87,7 @@ impl MeiliIndex {
         let index = self.client.index(&self.index_name);
 
         let task = index
-            .set_searchable_attributes(["name", "description", "owner"])
+            .set_searchable_attributes(["name", "description", "subtitle", "owner"])
             .await?;
         task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
@@ -106,6 +123,7 @@ impl MeiliIndex {
         task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         self.configure_embedders_via_http(embedder_config).await?;
+        Self::log_embedding_timeout_reminder(embedding_timeout_secs);
 
         info!(
             "Meilisearch index '{}' configured successfully",

@@ -50,7 +50,7 @@ async fn main() {
 
     // Configure all Meilisearch indexes
     media_meili
-        .setup_media_index(&config.meilisearch_embedder)
+        .setup_media_index(&config.meilisearch_embedder, config.meilisearch_embedding_timeout_secs)
         .await
         .expect("Failed to configure media index");
     lists_meili
@@ -69,6 +69,7 @@ async fn main() {
         config.batch_size,
         &config.meilisearch_embedder.name,
         &config.meilisearch_embedder.source,
+        &config.source_dir,
     )
     .await
     {
@@ -119,6 +120,7 @@ async fn main() {
     let media_db = Arc::clone(&db);
     let media_embedder = config.meilisearch_embedder.name.clone();
     let media_embedder_source = config.meilisearch_embedder.source.clone();
+    let media_source_dir = config.source_dir.clone();
     let media_handle = tokio::spawn(async move {
         listener::poll_for_changes(
             &media_db,
@@ -127,18 +129,19 @@ async fn main() {
             poll_interval,
             Some(media_embedder),
             Some(media_embedder_source),
+            Some(media_source_dir),
         )
         .await;
     });
 
     let list_db = Arc::clone(&db);
     let list_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval, None, None).await;
+        listener::poll_for_changes(&list_db, &lists_meili, "list", poll_interval, None, None, None).await;
     });
 
     let user_db = Arc::clone(&db);
     let user_handle = tokio::spawn(async move {
-        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval, None, None).await;
+        listener::poll_for_changes(&user_db, &users_meili, "user", poll_interval, None, None, None).await;
     });
 
     // Periodic cache refresh task

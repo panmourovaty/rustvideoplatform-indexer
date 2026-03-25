@@ -52,10 +52,21 @@ pub struct Config {
     pub sprite_items: usize,
     /// Canonical base URL of the site used when building sitemap URLs (e.g. "https://example.com")
     pub site_url: String,
+    /// Expected REST-embedder timeout in seconds.  This value cannot be set via
+    /// the Meilisearch API — it must be configured on the Meilisearch server via
+    /// `MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS` (Meilisearch ≥ v1.26.0).
+    /// The indexer logs a reminder at startup with this value so operators know
+    /// what to set on the server side. (default: 600)
+    #[serde(default = "default_embedding_timeout_secs")]
+    pub meilisearch_embedding_timeout_secs: u64,
 }
 
 fn default_batch_size() -> usize {
     1000
+}
+
+fn default_embedding_timeout_secs() -> u64 {
+    600
 }
 
 fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
@@ -67,8 +78,11 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         model: None,
         revision: None,
         pooling: None,
-        document_template: Some("{{doc.name}} {{doc.description}}".to_string()),
-        document_template_max_bytes: Some(800),
+        document_template: Some(
+            "{{doc.name}} {{doc.description}}{% if doc.subtitle %} {{doc.subtitle}}{% endif %}"
+                .to_string(),
+        ),
+        document_template_max_bytes: Some(4096),
         dimensions: Some(768),
         request: Some(serde_json::json!({
             "model": "embedding",
@@ -83,7 +97,7 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
 }
 
 fn default_document_template_max_bytes() -> Option<usize> {
-    Some(800)
+    Some(4096)
 }
 
 fn default_meilisearch_embedder_name() -> String {
@@ -192,6 +206,10 @@ impl Config {
                 .unwrap_or_else(default_sprite_items),
             site_url: env::var("SITE_URL")
                 .expect("SITE_URL must be set (or provide config.json)"),
+            meilisearch_embedding_timeout_secs: env::var("MEILISEARCH_EMBEDDING_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(default_embedding_timeout_secs),
         }
     }
 }
