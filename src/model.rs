@@ -15,6 +15,9 @@ pub struct MeiliMedia {
     pub public: bool,
     pub visibility: String,
     pub restricted_to_group: Option<String>,
+    /// English subtitle text (or first available language) used to enrich embeddings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _vectors: Option<serde_json::Value>,
 }

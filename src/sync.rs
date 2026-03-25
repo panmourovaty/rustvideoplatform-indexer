@@ -31,6 +31,33 @@ async fn count_reactions(
     Ok((likes, dislikes))
 }
 
+/// Fetch subtitle text for a media item, preferring English.
+/// Returns the content of the English subtitle track, or the first available
+/// language if no English track exists, or `None` if there are no subtitles.
+async fn fetch_subtitle(db: &ScyllaDb, media_id: &str) -> Option<String> {
+    let result = db
+        .session
+        .execute_unpaged(&db.get_subtitle_for_media, (media_id,))
+        .await
+        .ok()?;
+    let rows_result = result.into_rows_result().ok()?;
+    let rows: Vec<(String, String)> = rows_result
+        .rows::<(String, String)>()
+        .ok()?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if rows.is_empty() {
+        return None;
+    }
+
+    // Prefer English ("en" or "english"), fall back to first available language.
+    rows.iter()
+        .find(|(lang, _)| lang.eq_ignore_ascii_case("en") || lang.eq_ignore_ascii_case("english"))
+        .or_else(|| rows.first())
+        .map(|(_, content)| content.clone())
+}
+
 /// Build the `_vectors` payload only for user-provided embedders.
 /// REST embedders configured in Meilisearch generate vectors remotely, so
 /// documents must omit `_vectors` entirely.
@@ -39,11 +66,19 @@ fn build_media_vectors(
     embedder_source: &str,
     name: &str,
     description: &str,
+    subtitle: Option<&str>,
 ) -> Option<serde_json::Value> {
     if embedder_source.eq_ignore_ascii_case("userProvided") {
+        let mut text = format!("{name}\n\n{description}");
+        if let Some(sub) = subtitle {
+            if !sub.is_empty() {
+                text.push_str("\n\n");
+                text.push_str(sub);
+            }
+        }
         Some(json!({
             embedder_name: {
-                "text": format!("{name}\n\n{description}")
+                "text": text
             }
         }))
     } else {
@@ -121,6 +156,7 @@ pub async fn full_sync(
         {
             let description = description.clone().unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, id).await.unwrap_or((0, 0));
+            let subtitle = fetch_subtitle(db, id).await;
             batch_docs.push(MeiliMedia {
                 id: id.clone(),
                 name: name.clone(),
@@ -134,7 +170,14 @@ pub async fn full_sync(
                 public: visibility == "public",
                 visibility: visibility.clone(),
                 restricted_to_group: restricted_to_group.clone(),
-                _vectors: build_media_vectors(embedder_name, embedder_source, name, &description),
+                subtitle: subtitle.clone(),
+                _vectors: build_media_vectors(
+                    embedder_name,
+                    embedder_source,
+                    name,
+                    &description,
+                    subtitle.as_deref(),
+                ),
             });
         }
 
@@ -188,6 +231,7 @@ pub async fn sync_single(
         )) => {
             let description = description.unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, &id).await.unwrap_or((0, 0));
+            let subtitle = fetch_subtitle(db, &id).await;
             let doc = MeiliMedia {
                 id,
                 name: name.clone(),
@@ -201,11 +245,13 @@ pub async fn sync_single(
                 public: visibility == "public",
                 visibility,
                 restricted_to_group,
+                subtitle: subtitle.clone(),
                 _vectors: build_media_vectors(
                     embedder_name,
                     embedder_source,
                     &name,
                     &description,
+                    subtitle.as_deref(),
                 ),
             };
             meili.upsert_document(&doc).await?;

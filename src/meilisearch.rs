@@ -70,7 +70,7 @@ impl MeiliIndex {
         let index = self.client.index(&self.index_name);
 
         let task = index
-            .set_searchable_attributes(["name", "description", "owner"])
+            .set_searchable_attributes(["name", "description", "subtitle", "owner"])
             .await?;
         task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 

@@ -8,6 +8,7 @@ pub struct ScyllaDb {
     pub get_media_by_id: PreparedStatement,
     pub get_media_description: PreparedStatement,
     pub get_reactions_for_media: PreparedStatement,
+    pub get_subtitle_for_media: PreparedStatement,
     pub get_list_by_id: PreparedStatement,
     pub count_list_items: PreparedStatement,
     pub get_user_by_login: PreparedStatement,
@@ -37,6 +38,9 @@ impl ScyllaDb {
                 .await?,
             get_reactions_for_media: session
                 .prepare("SELECT user_login, reaction FROM media_likes WHERE media_id = ?")
+                .await?,
+            get_subtitle_for_media: session
+                .prepare("SELECT language, content FROM media_subtitles WHERE media_id = ?")
                 .await?,
             get_list_by_id: session
                 .prepare(
