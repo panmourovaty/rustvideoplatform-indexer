@@ -58,10 +58,50 @@ impl MeiliIndex {
         }
     }
 
+    /// Attempt to set the REST-embedder timeout via the Meilisearch experimental-features API.
+    ///
+    /// Meilisearch ≥ v1.26 accepts `restEmbedderTimeoutSeconds` in the
+    /// `PATCH /experimental-features` body.  Older versions will reject the
+    /// unknown field; in that case we log a warning with instructions for the
+    /// equivalent server-side environment variable and continue without error.
+    pub async fn configure_embedding_timeout(
+        &self,
+        timeout_secs: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!("{}/experimental-features", self.base_url);
+        let payload = serde_json::json!({ "restEmbedderTimeoutSeconds": timeout_secs });
+
+        let mut request = self
+            .http_client
+            .patch(&url)
+            .header("Content-Type", "application/json");
+
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {api_key}"));
+        }
+
+        let response = request.json(&payload).send().await?;
+        let status = response.status();
+
+        if status.is_success() {
+            info!("Meilisearch REST-embedder timeout set to {timeout_secs}s via experimental-features API");
+        } else {
+            let body = response.text().await.unwrap_or_default();
+            log::warn!(
+                "Could not set embedding timeout via Meilisearch API (HTTP {status}: {body}). \
+                 Set the env var MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS={timeout_secs} \
+                 on the Meilisearch server instead (requires Meilisearch ≥ v1.26)."
+            );
+        }
+
+        Ok(())
+    }
+
     /// Configure the "media" index with its specific settings.
     pub async fn setup_media_index(
         &self,
         embedder_config: &MeilisearchEmbedderConfig,
+        embedding_timeout_secs: u64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Configuring Meilisearch index '{}'...", self.index_name);
 
@@ -106,6 +146,7 @@ impl MeiliIndex {
         task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         self.configure_embedders_via_http(embedder_config).await?;
+        self.configure_embedding_timeout(embedding_timeout_secs).await?;
 
         info!(
             "Meilisearch index '{}' configured successfully",

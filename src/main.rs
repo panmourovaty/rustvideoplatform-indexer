@@ -50,7 +50,7 @@ async fn main() {
 
     // Configure all Meilisearch indexes
     media_meili
-        .setup_media_index(&config.meilisearch_embedder)
+        .setup_media_index(&config.meilisearch_embedder, config.meilisearch_embedding_timeout_secs)
         .await
         .expect("Failed to configure media index");
     lists_meili
