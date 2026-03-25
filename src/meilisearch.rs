@@ -58,43 +58,20 @@ impl MeiliIndex {
         }
     }
 
-    /// Attempt to set the REST-embedder timeout via the Meilisearch experimental-features API.
+    /// Log a reminder about the Meilisearch REST-embedder timeout.
     ///
-    /// Meilisearch ≥ v1.26 accepts `restEmbedderTimeoutSeconds` in the
-    /// `PATCH /experimental-features` body.  Older versions will reject the
-    /// unknown field; in that case we log a warning with instructions for the
-    /// equivalent server-side environment variable and continue without error.
-    pub async fn configure_embedding_timeout(
-        &self,
-        timeout_secs: u64,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/experimental-features", self.base_url);
-        let payload = serde_json::json!({ "restEmbedderTimeoutSeconds": timeout_secs });
-
-        let mut request = self
-            .http_client
-            .patch(&url)
-            .header("Content-Type", "application/json");
-
-        if let Some(api_key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
-        }
-
-        let response = request.json(&payload).send().await?;
-        let status = response.status();
-
-        if status.is_success() {
-            info!("Meilisearch REST-embedder timeout set to {timeout_secs}s via experimental-features API");
-        } else {
-            let body = response.text().await.unwrap_or_default();
-            log::warn!(
-                "Could not set embedding timeout via Meilisearch API (HTTP {status}: {body}). \
-                 Set the env var MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS={timeout_secs} \
-                 on the Meilisearch server instead (requires Meilisearch ≥ v1.26)."
-            );
-        }
-
-        Ok(())
+    /// The timeout cannot be set via any Meilisearch API call — it requires the
+    /// environment variable `MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS`
+    /// to be set on the Meilisearch server at startup (≥ v1.26.0).
+    /// The default is 30 seconds, which is easily exceeded when embedding large
+    /// subtitle files.  This function logs an info message reminding operators
+    /// to verify the server is configured correctly.
+    pub fn log_embedding_timeout_reminder(timeout_secs: u64) {
+        info!(
+            "Embedding timeout reminder: ensure the Meilisearch server has \
+             MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS={timeout_secs} set \
+             (Meilisearch ≥ v1.26.0, default is 30s which may be too short for subtitle indexing)."
+        );
     }
 
     /// Configure the "media" index with its specific settings.
@@ -146,7 +123,7 @@ impl MeiliIndex {
         task.wait_for_completion(&self.client, None, Some(std::time::Duration::from_secs(300))).await?;
 
         self.configure_embedders_via_http(embedder_config).await?;
-        self.configure_embedding_timeout(embedding_timeout_secs).await?;
+        Self::log_embedding_timeout_reminder(embedding_timeout_secs);
 
         info!(
             "Meilisearch index '{}' configured successfully",

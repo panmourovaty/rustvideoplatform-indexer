@@ -52,11 +52,11 @@ pub struct Config {
     pub sprite_items: usize,
     /// Canonical base URL of the site used when building sitemap URLs (e.g. "https://example.com")
     pub site_url: String,
-    /// Desired REST-embedder timeout in seconds sent to Meilisearch during index setup.
-    /// Requires Meilisearch ≥ v1.26 and the server env var
-    /// `MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS` to be set to the same value.
-    /// The indexer will attempt to configure this via the experimental-features API
-    /// and log a warning if the server does not support it. (default: 600)
+    /// Expected REST-embedder timeout in seconds.  This value cannot be set via
+    /// the Meilisearch API — it must be configured on the Meilisearch server via
+    /// `MEILI_EXPERIMENTAL_REST_EMBEDDER_TIMEOUT_SECONDS` (Meilisearch ≥ v1.26.0).
+    /// The indexer logs a reminder at startup with this value so operators know
+    /// what to set on the server side. (default: 600)
     #[serde(default = "default_embedding_timeout_secs")]
     pub meilisearch_embedding_timeout_secs: u64,
 }
