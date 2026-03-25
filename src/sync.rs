@@ -31,31 +31,65 @@ async fn count_reactions(
     Ok((likes, dislikes))
 }
 
-/// Fetch subtitle text for a media item, preferring English.
-/// Returns the content of the English subtitle track, or the first available
-/// language if no English track exists, or `None` if there are no subtitles.
-async fn fetch_subtitle(db: &ScyllaDb, media_id: &str) -> Option<String> {
-    let result = db
-        .session
-        .execute_unpaged(&db.get_subtitle_for_media, (media_id,))
-        .await
-        .ok()?;
-    let rows_result = result.into_rows_result().ok()?;
-    let rows: Vec<(String, String)> = rows_result
-        .rows::<(String, String)>()
-        .ok()?
-        .filter_map(|r| r.ok())
+/// Read subtitle text for a media item from the filesystem, preferring English.
+///
+/// Subtitle tracks are stored as WebVTT files under:
+///   `{source_dir}/{media_id}/captions/{label}.vtt`
+///
+/// The available tracks are listed in `list.txt` in that same directory
+/// (one filename per line, as written by the main platform).  The label is
+/// the filename without its extension (e.g. `English.vtt` → label `English`).
+///
+/// Returns plain text extracted from the chosen VTT file, or `None` when no
+/// subtitle files exist for this media item.
+fn fetch_subtitle(source_dir: &str, media_id: &str) -> Option<String> {
+    let captions_dir = std::path::Path::new(source_dir)
+        .join(media_id)
+        .join("captions");
+
+    // Read the manifest that lists available tracks.
+    let list_content = std::fs::read_to_string(captions_dir.join("list.txt")).ok()?;
+
+    let filenames: Vec<&str> = list_content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && l.ends_with(".vtt"))
         .collect();
 
-    if rows.is_empty() {
+    if filenames.is_empty() {
         return None;
     }
 
-    // Prefer English ("en" or "english"), fall back to first available language.
-    rows.iter()
-        .find(|(lang, _)| lang.eq_ignore_ascii_case("en") || lang.eq_ignore_ascii_case("english"))
-        .or_else(|| rows.first())
-        .map(|(_, content)| content.clone())
+    // Prefer English track; fall back to the first available one.
+    let chosen = filenames
+        .iter()
+        .find(|f| {
+            let label = f.trim_end_matches(".vtt");
+            label.eq_ignore_ascii_case("en") || label.eq_ignore_ascii_case("english")
+        })
+        .or_else(|| filenames.first())?;
+
+    let vtt_content = std::fs::read_to_string(captions_dir.join(chosen)).ok()?;
+    let text = extract_vtt_text(&vtt_content);
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// Strip WebVTT formatting and return only the spoken/displayed text.
+///
+/// Removes the `WEBVTT` header, `NOTE` blocks, timestamp cue lines
+/// (`HH:MM:SS.mmm --> HH:MM:SS.mmm`), and blank lines, leaving only the
+/// subtitle text lines joined by spaces.
+fn extract_vtt_text(vtt: &str) -> String {
+    vtt.lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.starts_with("WEBVTT")
+                && !line.starts_with("NOTE")
+                && !line.contains("-->")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Build the `_vectors` payload only for user-provided embedders.
@@ -93,6 +127,7 @@ pub async fn full_sync(
     batch_size: usize,
     embedder_name: &str,
     embedder_source: &str,
+    source_dir: &str,
 ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting full media sync from ScyllaDB to Meilisearch...");
 
@@ -156,7 +191,7 @@ pub async fn full_sync(
         {
             let description = description.clone().unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, id).await.unwrap_or((0, 0));
-            let subtitle = fetch_subtitle(db, id).await;
+            let subtitle = fetch_subtitle(source_dir, id);
             batch_docs.push(MeiliMedia {
                 id: id.clone(),
                 name: name.clone(),
@@ -198,6 +233,7 @@ pub async fn sync_single(
     media_id: &str,
     embedder_name: &str,
     embedder_source: &str,
+    source_dir: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let result = db
         .session
@@ -231,7 +267,7 @@ pub async fn sync_single(
         )) => {
             let description = description.unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, &id).await.unwrap_or((0, 0));
-            let subtitle = fetch_subtitle(db, &id).await;
+            let subtitle = fetch_subtitle(source_dir, &id);
             let doc = MeiliMedia {
                 id,
                 name: name.clone(),
