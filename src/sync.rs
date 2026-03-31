@@ -92,6 +92,46 @@ fn extract_vtt_text(vtt: &str) -> String {
         .join(" ")
 }
 
+/// Return the thumbnail path (relative to source_dir) for a media item, or `None`.
+///
+/// Prefers the small variant (`thumbnail-sm.avif`) and falls back to the full
+/// one (`thumbnail.avif`).  The returned string is a path relative to
+/// `source_dir` that clients can use to construct the full URL.
+fn fetch_thumbnail(source_dir: &str, media_id: &str) -> Option<String> {
+    let sm = format!("{source_dir}/{media_id}/thumbnail-sm.avif");
+    let full = format!("{source_dir}/{media_id}/thumbnail.avif");
+    if std::path::Path::new(&sm).exists() {
+        Some(format!("{media_id}/thumbnail-sm.avif"))
+    } else if std::path::Path::new(&full).exists() {
+        Some(format!("{media_id}/thumbnail.avif"))
+    } else {
+        None
+    }
+}
+
+/// Return the path to the preview-sprite VTT manifest (relative to source_dir) for a
+/// media item, or `None` when no sprites have been generated yet.
+///
+/// The processor writes sprite sheets and a WebVTT manifest into a `previews/`
+/// subdirectory inside the media's source directory:
+///
+///   `{source_dir}/{media_id}/previews/previews.vtt`
+///   `{source_dir}/{media_id}/previews/preview_sprite_0.avif`
+///   `{source_dir}/{media_id}/previews/preview_sprite_1.avif`
+///   …
+///
+/// The VTT file references the sprite images by relative filename so that the
+/// client only needs the path to `previews.vtt` to load both the manifest and
+/// the individual sprite sheets.
+fn fetch_preview_sprite(source_dir: &str, media_id: &str) -> Option<String> {
+    let vtt = format!("{source_dir}/{media_id}/previews/previews.vtt");
+    if std::path::Path::new(&vtt).exists() {
+        Some(format!("{media_id}/previews/previews.vtt"))
+    } else {
+        None
+    }
+}
+
 /// Build the `_vectors` payload only for user-provided embedders.
 /// REST embedders configured in Meilisearch generate vectors remotely, so
 /// documents must omit `_vectors` entirely.
@@ -192,6 +232,8 @@ pub async fn full_sync(
             let description = description.clone().unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, id).await.unwrap_or((0, 0));
             let subtitle = fetch_subtitle(source_dir, id);
+            let thumbnail = fetch_thumbnail(source_dir, id);
+            let preview_sprite = fetch_preview_sprite(source_dir, id);
             batch_docs.push(MeiliMedia {
                 id: id.clone(),
                 name: name.clone(),
@@ -206,6 +248,8 @@ pub async fn full_sync(
                 visibility: visibility.clone(),
                 restricted_to_group: restricted_to_group.clone(),
                 subtitle: subtitle.clone(),
+                thumbnail,
+                preview_sprite,
                 _vectors: build_media_vectors(
                     embedder_name,
                     embedder_source,
@@ -268,6 +312,8 @@ pub async fn sync_single(
             let description = description.unwrap_or_default();
             let (likes, dislikes) = count_reactions(db, &id).await.unwrap_or((0, 0));
             let subtitle = fetch_subtitle(source_dir, &id);
+            let thumbnail = fetch_thumbnail(source_dir, &id);
+            let preview_sprite = fetch_preview_sprite(source_dir, &id);
             let doc = MeiliMedia {
                 id,
                 name: name.clone(),
@@ -282,6 +328,8 @@ pub async fn sync_single(
                 visibility,
                 restricted_to_group,
                 subtitle: subtitle.clone(),
+                thumbnail,
+                preview_sprite,
                 _vectors: build_media_vectors(
                     embedder_name,
                     embedder_source,

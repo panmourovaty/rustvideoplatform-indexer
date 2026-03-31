@@ -318,6 +318,12 @@ impl MeiliIndex {
                 serde_json::Value::Bool(binary_quantized),
             );
         }
+        if let Some(indexing_fragments) = &embedder_config.indexing_fragments {
+            embedder.insert("indexingFragments".to_string(), indexing_fragments.clone());
+        }
+        if let Some(search_fragments) = &embedder_config.search_fragments {
+            embedder.insert("searchFragments".to_string(), search_fragments.clone());
+        }
 
         let payload = serde_json::json!({
             embedder_config.name.clone(): serde_json::Value::Object(embedder),

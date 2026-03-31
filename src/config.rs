@@ -21,6 +21,27 @@ pub struct MeilisearchEmbedderConfig {
     pub response: Option<serde_json::Value>,
     pub headers: Option<HashMap<String, String>>,
     pub binary_quantized: Option<bool>,
+    /// Indexing-time fragments for multimodal REST embedders (Meilisearch ≥ v1.13).
+    ///
+    /// Each entry is a fragment name mapped to an object with a `"value"` Liquid
+    /// template that Meilisearch renders per document and injects into the REST
+    /// request via `{{fragment.<name>}}`.
+    ///
+    /// Example — pass the thumbnail URL to a vision-language model:
+    /// ```json
+    /// {
+    ///   "image": {
+    ///     "value": "https://media.example.com/{{doc.thumbnail}}"
+    ///   }
+    /// }
+    /// ```
+    pub indexing_fragments: Option<serde_json::Value>,
+    /// Search-time fragments for multimodal REST embedders (Meilisearch ≥ v1.13).
+    ///
+    /// Same shape as `indexing_fragments` but rendered against the search query
+    /// instead of a document.  Omit when the embedder does not need image input
+    /// at query time.
+    pub search_fragments: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -93,6 +114,8 @@ fn default_meilisearch_embedder() -> MeilisearchEmbedderConfig {
         })),
         headers: None,
         binary_quantized: None,
+        indexing_fragments: None,
+        search_fragments: None,
     }
 }
 
@@ -183,6 +206,12 @@ impl Config {
                 binary_quantized: env::var("MEILISEARCH_EMBEDDER_BINARY_QUANTIZED")
                     .ok()
                     .and_then(|v| v.parse().ok()),
+                indexing_fragments: env::var("MEILISEARCH_EMBEDDER_INDEXING_FRAGMENTS")
+                    .ok()
+                    .and_then(|v| serde_json::from_str(&v).ok()),
+                search_fragments: env::var("MEILISEARCH_EMBEDDER_SEARCH_FRAGMENTS")
+                    .ok()
+                    .and_then(|v| serde_json::from_str(&v).ok()),
             },
             batch_size: env::var("BATCH_SIZE")
                 .ok()
