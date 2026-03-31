@@ -18,6 +18,14 @@ pub struct MeiliMedia {
     /// English subtitle text (or first available language) used to enrich embeddings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    /// Thumbnail path relative to source_dir (e.g. `"{id}/thumbnail.avif"`).
+    /// Present for all media types when a thumbnail file exists on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<String>,
+    /// Preview sprite path relative to source_dir (e.g. `"{id}/preview-sprite.avif"`).
+    /// Present for videos when a preview sprite file exists on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_sprite: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _vectors: Option<serde_json::Value>,
 }
